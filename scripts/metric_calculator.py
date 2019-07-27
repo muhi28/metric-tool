@@ -1,5 +1,6 @@
 import numpy as np
 import math
+import argparse
 import cv2
 
 
@@ -13,6 +14,10 @@ class MetricCalculator:
         self.dataCollection = []
         self.avgValue = 0
 
+    def __calcssim(self, img1, img2):
+
+        return 0.0
+
     def __calcpsnr(self, img1, img2):
 
         target_data = np.array(img1, dtype=np.float64)
@@ -25,53 +30,65 @@ class MetricCalculator:
 
         return 20 * math.log10(255 / mse)
 
-    def performVideoExtraction(self):
+    def check_selected_metric(self, selected_metric, img1, img2):
 
-        psnrVal = 0
-        framenumber = 1
+        if selected_metric == "PSNR":
+            return self.__calcpsnr(img1=img1, img2=img2)
+        elif selected_metric == "SSIM":
+            return self.__calcssim(img1=img1, img2=img2)
+        else:
+            print("Selected metric not allowed!!!")
+            exit(-1)
+
+    def convert_to_yuv(self, raw_frame, coded_frame):
+
+        raw_yuv = cv2.cvtColor(raw_frame, cv2.COLOR_BGR2YCrCb)
+        coded_yuv = cv2.cvtColor(coded_frame, cv2.COLOR_BGR2YCrCb)
+
+        # extract Y [Luminance] channel
+        y_raw, _, _ = cv2.split(raw_yuv)
+        y_coded, _, _ = cv2.split(coded_yuv)
+
+        # cv2.imshow("Y-Raw", y_raw)
+        # cv2.imshow("Y-Coded", y_coded)
+
+        return y_raw, y_coded
+
+    def perform_measuring(self, selected_metric):
+
+        metric_val = 0
+        frame_number = 1
 
         while True:
 
             raw_ret, raw_frame = self.video_cap_raw.read()
             cod_ret, coded_frame = self.video_cap_coded.read()
 
-            if cv2.waitKey(1) & 0xFF == ord('q'):
-                break
-
-                # check if the return value for frame capturing is false -> this means that we have reached the end of the video
-            if not raw_ret or not cod_ret or framenumber == 15:
+            # check if the return value for frame capturing is false
+            # -> this means that we have reached the end of the video
+            if not raw_ret or not cod_ret or frame_number == 50 or cv2.waitKey(1) & 0xFF == ord('q'):
                 break
 
                 # check selected color space
             if self.colorspacetype == "RGB":
 
-                psnrVal = self.calcpsnr(raw_frame, coded_frame)
+                metric_val = self.check_selected_metric(selected_metric, raw_frame, coded_frame)
 
-                print("FRAME {0}".format(framenumber))
-                print("PSNR-VALUE [RGB] -> {0:.2f} [dB] ".format(psnrVal))
+                print("FRAME {0}".format(frame_number))
+                print("{0}-VALUE [RGB] -> {1:.2f} [dB] ".format(selected_metric, metric_val))
 
             elif self.colorspacetype == "YUV":
 
-                # calculate Y-PSNR
-                yuvRaw = cv2.cvtColor(raw_frame, cv2.COLOR_BGR2YCrCb)
-                yuvCoded = cv2.cvtColor(coded_frame, cv2.COLOR_BGR2YCrCb)
-
-                # extract Y [Luminance] channel
-                y_raw, _, _ = cv2.split(yuvRaw)
-                y_coded, _, _ = cv2.split(yuvCoded)
-
-                # cv2.imshow("Y-Raw", y_raw)
-                # cv2.imshow("Y-Coded", y_coded)
+                y_raw, y_coded = self.convert_to_yuv(raw_frame, coded_frame)
 
                 # perform psnr for y-channel
-                psnrVal = self.__calcpsnr(yuvRaw, yuvCoded)
+                metric_val = self.check_selected_metric(selected_metric, y_raw, y_coded)
                 # upsnr = psnr(u_raw, u_coded)
                 # vpsnr = psnr(v_raw, v_coded)
 
                 # print current value
-                print("FRAME {0}".format(framenumber))
-                print("PSNR-VALUE [Y-Channel] -> {0:.2f} [dB] ".format(psnrVal))
-
+                print("FRAME {0}".format(frame_number))
+                print("{0}-VALUE [Y-Channel] -> {1:.2f} [dB] ".format(selected_metric, metric_val))
 
             else:
                 print("Wrong color space.....")
@@ -79,20 +96,20 @@ class MetricCalculator:
 
                 # if there are black frames inside our test sequences then the psnr for them would be infinity
                 # therefore we need to check if there are some infinity values to skip them
-            if psnrVal == math.inf:
+            if metric_val == math.inf:
                 continue
 
-                # append data to frames and psnr list
-            self.frames.append(framenumber)
-            self.dataCollection.append(psnrVal)
+            # append data to frames and data list
+            self.frames.append(frame_number)
+            self.dataCollection.append(metric_val)
 
-            framenumber += 1
-            self.avgValue += psnrVal
+            frame_number += 1
+            self.avgValue += metric_val
 
         self.video_cap_raw.release()
         self.video_cap_coded.release()
 
         return self.frames, self.dataCollection
 
-    def getAvgValue(self):
+    def get_avg_value(self):
         return self.avgValue / len(self.frames)

@@ -7,7 +7,7 @@ import matplotlib.pyplot as plt
 from scripts.metric_calculator import MetricCalculator
 
 
-def checkVideoResolutions(raw_cap, coded_cap):
+def check_video_resolutions(raw_cap, coded_cap):
 
     raw_width = int(raw_cap.get(cv2.CAP_PROP_FRAME_WIDTH))
     raw_height = int(raw_cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
@@ -44,7 +44,6 @@ if __name__ == '__main__':
     print("Color Space -> {0}".format(colorSpaceType))
     print("Selected Metric -> {0}".format(metricToCalculate))
 
-
     # check if video streams are opened
     if not video_cap_raw.isOpened():
         print("Could not open raw video file")
@@ -55,14 +54,14 @@ if __name__ == '__main__':
         exit(-1)
 
     # check whether the selected video files have the same resolution or not
-    if not checkVideoResolutions(video_cap_raw, video_cap_coded):
+    if not check_video_resolutions(video_cap_raw, video_cap_coded):
         print("Video resolutions doesn't match")
 
     metric_calc = MetricCalculator(video_cap_raw, video_cap_coded, colorSpaceType)
 
-    frames, metric_data = metric_calc.performVideoExtraction()
+    frames, metric_data = metric_calc.perform_measuring(selected_metric=metricToCalculate)
 
-    print("AVG-PSNR-VALUE -> {0:.3f} [dB]".format(metric_calc.getAvgValue()))
+    print("AVG-{0}-VALUE -> {1:.3f} [dB]".format(metricToCalculate, metric_calc.get_avg_value()))
 
     plt.plot(frames, metric_data)
     plt.xlabel("Frame Number")
