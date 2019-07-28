@@ -11,16 +11,16 @@ class MetricCalculator:
         provides the functionality to calculate different quality metrics
     """
 
-    def __init__(self, video_cap_raw, video_cap_coded, colorspacetype):
+    def __init__(self, video_cap_raw, video_cap_coded, color_space_type):
         self.video_cap_raw = video_cap_raw
         self.video_cap_coded = video_cap_coded
-        self.colorspacetype = colorspacetype
+        self.color_space_type = color_space_type
         self.frames = []
         self.dataCollection = []
         self.avgValue = 0
         self.MAX_PIXEL = 255
 
-    def __calc_ssim(self, img1, img2):
+    def __calc_ssim(self, img1, img2, multi_channel):
         """
             calculates the structural similarity between two images
         :param img1: raw image (original)
@@ -40,7 +40,8 @@ class MetricCalculator:
            :DOI:`10.1109/TIP.2003.819861`
         """
 
-        return compare_ssim(img1, img2, gaussian_weights=True, sigma=1.5, use_sample_covariance=False)
+        return compare_ssim(img1, img2, gaussian_weights=True,
+                            sigma=1.5, use_sample_covariance=False, multichannel=multi_channel)
 
     def __calc_psnr(self, img1, img2):
         """
@@ -68,9 +69,17 @@ class MetricCalculator:
         :return: metric value
         """
         if selected_metric == "PSNR":
+
             return self.__calc_psnr(img1=img1, img2=img2)
+
         elif selected_metric == "SSIM":
-            return self.__calc_ssim(img1=img1, img2=img2)
+
+            multi = False
+
+            if self.color_space_type == "RGB":
+                multi = True
+
+            return self.__calc_ssim(img1=img1, img2=img2, multi_channel=multi)
         else:
             print("Selected metric not allowed!!!")
             exit(-1)
@@ -110,15 +119,15 @@ class MetricCalculator:
 
             # check if the return value for frame capturing is false
             # -> this means that we have reached the end of the video
-            if not raw_ret or not cod_ret or frame_number == 10 or cv2.waitKey(1) & 0xFF == ord('q'):
+            if not raw_ret or not cod_ret or cv2.waitKey(1) & 0xFF == ord('q'):
                 break
 
                 # check selected color space
-            if self.colorspacetype == "RGB":
+            if self.color_space_type == "RGB":
 
                 metric_val = self.check_selected_metric(selected_metric, raw_frame, coded_frame)
 
-            elif self.colorspacetype == "YUV":
+            elif self.color_space_type == "YUV":
 
                 y_raw, y_coded = self.convert_to_yuv(raw_frame, coded_frame)
 
