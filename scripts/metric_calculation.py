@@ -6,7 +6,9 @@ import os
 import matplotlib.pyplot as plt
 from scripts.metric_calculator import MetricCalculator
 
-
+"""
+    check resolution of of video to compare
+"""
 def check_video_resolutions(raw_cap, coded_cap):
 
     raw_width = int(raw_cap.get(cv2.CAP_PROP_FRAME_WIDTH))
