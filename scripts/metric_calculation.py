@@ -2,13 +2,21 @@ import cv2
 import argparse
 import sys
 import os
+import time
 import matplotlib.pyplot as plt
 from scripts.metric_calculator import MetricCalculator
 
-"""
-    check resolution of of video to compare
-"""
+
 def check_video_resolutions(raw_cap, coded_cap):
+    """
+        check resolution of of video to compare
+
+    :param raw_cap: raw video capture
+    :param coded_cap: coded video capture
+    :return:
+             True -> same resolution
+             False -> resolution not the same
+    """
 
     raw_width = int(raw_cap.get(cv2.CAP_PROP_FRAME_WIDTH))
     raw_height = int(raw_cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
@@ -24,11 +32,23 @@ if __name__ == '__main__':
         print("Update the values -> raw video file/image and coded video file / image")
         exit(0)
 
+    # construct the argument parser
+    arg_parser = argparse.ArgumentParser()
+
+    # add argument elements to argparse
+    arg_parser.add_argument("-r", "--raw", required=True,help="original input video")
+    arg_parser.add_argument("-e", "--encoded", required=True, help="encoded input video")
+    arg_parser.add_argument("-c", "--colorspace", required=True, help="color space in which to perform measurements")
+    arg_parser.add_argument("-m", "--metric", required=True, help="metric to measure")
+
+    # parse all arguments
+    args = vars(arg_parser.parse_args())
+
     # extract parameters
-    rawFilePath = sys.argv[1]  # get raw file path
-    codedFilePath = sys.argv[2]  # get coded file path
-    colorSpaceType = sys.argv[3]  # get selected color space to calculate the metrics
-    metricToCalculate = sys.argv[4]  # get selected metric to calculate
+    rawFilePath = args["raw"]  # get raw file path
+    codedFilePath = args["encoded"]  # get coded file path
+    colorSpaceType = args["colorspace"]  # get selected color space to calculate the metrics
+    metricToCalculate = args["metric"]  # get selected metric to calculate
 
     # initialize video capture for raw and coded video
     video_cap_raw = cv2.VideoCapture(rawFilePath)
@@ -43,7 +63,7 @@ if __name__ == '__main__':
     print("Selected coded video file -> {0}".format(coded_file_basename))
     print("FPS -> {0}".format(video_cap_coded.get(cv2.CAP_PROP_FPS)))
     print("Color Space -> {0}".format(colorSpaceType))
-    print("Selected Metric -> {0}".format(metricToCalculate))
+    print("Selected Metric -> {0}\n".format(metricToCalculate))
 
     # check if video streams are opened
     if not video_cap_raw.isOpened():
@@ -58,10 +78,14 @@ if __name__ == '__main__':
     if not check_video_resolutions(video_cap_raw, video_cap_coded):
         print("Video resolutions doesn't match")
 
+    start = time.time()
     metric_calc = MetricCalculator(video_cap_raw, video_cap_coded, colorSpaceType)
+
+    duration = time.time() - start
 
     frames, metric_data = metric_calc.perform_measuring(selected_metric=metricToCalculate)
 
+    print("Duration of Measuring -> {0} sec.".format(duration))
     print("AVG-{0}-VALUE -> {1:.3f} [dB]".format(metricToCalculate, metric_calc.get_avg_value()))
 
     plt.plot(frames, metric_data)
