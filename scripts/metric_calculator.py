@@ -49,8 +49,8 @@ class MetricCalculator:
         :param img2: coded image
         :return: psnr value
         """
-        target_data = np.array(img1, dtype=np.float64)
-        ref_data = np.array(img2, dtype=np.float64)
+        target_data = np.array(img2, dtype=np.float64)
+        ref_data = np.array(img1, dtype=np.float64)
 
         diff = ref_data - target_data
         diff = diff.flatten('C')
@@ -124,7 +124,16 @@ class MetricCalculator:
                 # check selected color space
             if self.color_space_type == "RGB":
 
-                metric_val = self.check_selected_metric(selected_metric, raw_frame, coded_frame)
+                # extract r,g,b channels and calculate psnr for each channel
+                b_raw, g_raw, r_raw = cv2.split(raw_frame)
+                b_cod, g_cod, r_cod = cv2.split(coded_frame)
+
+                b_val = self.check_selected_metric(selected_metric, b_raw, b_cod)
+                g_val = self.check_selected_metric(selected_metric, g_raw, g_cod)
+                r_val = self.check_selected_metric(selected_metric, r_raw, r_cod)
+
+                metric_val = (b_val + g_val + r_val)/3
+                #metric_val = self.check_selected_metric(selected_metric, raw_frame, coded_frame)
 
             elif self.color_space_type == "YUV":
 
