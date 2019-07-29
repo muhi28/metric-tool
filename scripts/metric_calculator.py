@@ -1,6 +1,5 @@
 import numpy as np
 import math
-import argparse
 from skimage.measure import compare_ssim
 import cv2
 
@@ -146,8 +145,7 @@ class MetricCalculator:
                 continue
 
             # print current value
-            print("FRAME {0}".format(frame_number))
-            print("{0}-VALUE [Y-Channel] -> {1:.4f} [dB] ".format(selected_metric, metric_val))
+            print("FRAME {0}: {1}-VALUE [{2}] -> {3:.4f} [dB] ".format(frame_number, selected_metric, self.color_space_type, metric_val))
 
             # append data to frames and data list
             self.frames.append(frame_number)
