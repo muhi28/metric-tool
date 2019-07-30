@@ -57,6 +57,10 @@ class MetricCalculator:
 
         mse = math.sqrt(np.mean(diff ** 2.))
 
+        # if black frames appear during the measurement (leading to mse=zero), return the maximum float value for them.
+        if mse == 0:
+            return float("inf")
+
         return 20 * math.log10(self.MAX_PIXEL / mse)
 
     def check_selected_metric(self, selected_metric, img1, img2):
@@ -83,24 +87,33 @@ class MetricCalculator:
             print("Selected metric not allowed!!!")
             exit(-1)
 
-    def convert_to_yuv(self, raw_frame, coded_frame):
+    def separate_channels(self, raw_frame, coded_frame):
         """
-            used to convert color space from RGB to YUV
+            used to convert color space from RGB to YUV if needed and to separate the channels
         :param raw_frame: original image
         :param coded_frame: coded image
-        :return: Y-Channel of original and coded image
+        :return: separated channels for selected color space
         """
-        raw_yuv = cv2.cvtColor(raw_frame, cv2.COLOR_BGR2YCrCb)
-        coded_yuv = cv2.cvtColor(coded_frame, cv2.COLOR_BGR2YCrCb)
 
-        # extract Y [Luminance] channel
-        y_raw, _, _ = cv2.split(raw_yuv)
-        y_coded, _, _ = cv2.split(coded_yuv)
+        if self.color_space_type == "RGB":
+            # extract r,g,b channels and calculate metric for each channel
+            b_raw, g_raw, r_raw = cv2.split(raw_frame)
+            b_cod, g_cod, r_cod = cv2.split(coded_frame)
 
-        # cv2.imshow("Y-Raw", y_raw)
-        # cv2.imshow("Y-Coded", y_coded)
+            return [b_raw, g_raw, r_raw], [b_cod, g_cod, r_cod]
 
-        return y_raw, y_coded
+        elif self.color_space_type == "YUV":
+            raw_yuv = cv2.cvtColor(raw_frame, cv2.COLOR_BGR2YCrCb)
+            coded_yuv = cv2.cvtColor(coded_frame, cv2.COLOR_BGR2YCrCb)
+
+            # extract Y [Luminance] channel
+            y_raw, _, _ = cv2.split(raw_yuv)
+            y_coded, _, _ = cv2.split(coded_yuv)
+
+            return y_raw, y_coded
+        else:
+            print("Wrong color space selected!!!")
+            exit(-1)
 
     def perform_measuring(self, selected_metric):
         """
@@ -124,20 +137,18 @@ class MetricCalculator:
                 # check selected color space
             if self.color_space_type == "RGB":
 
-                # extract r,g,b channels and calculate psnr for each channel
-                b_raw, g_raw, r_raw = cv2.split(raw_frame)
-                b_cod, g_cod, r_cod = cv2.split(coded_frame)
+                [b_raw, g_raw, r_raw], [b_cod, g_cod, r_cod] = self.separate_channels(raw_frame, coded_frame)
 
                 b_val = self.check_selected_metric(selected_metric, b_raw, b_cod)
                 g_val = self.check_selected_metric(selected_metric, g_raw, g_cod)
                 r_val = self.check_selected_metric(selected_metric, r_raw, r_cod)
 
                 metric_val = (b_val + g_val + r_val)/3
-                #metric_val = self.check_selected_metric(selected_metric, raw_frame, coded_frame)
+                # metric_val = self.check_selected_metric(selected_metric, raw_frame, coded_frame)
 
             elif self.color_space_type == "YUV":
 
-                y_raw, y_coded = self.convert_to_yuv(raw_frame, coded_frame)
+                y_raw, y_coded = self.separate_channels(raw_frame, coded_frame)
 
                 # perform psnr for y-channel
                 metric_val = self.check_selected_metric(selected_metric, y_raw, y_coded)
@@ -154,7 +165,8 @@ class MetricCalculator:
                 continue
 
             # print current value
-            print("FRAME {0}: {1}-VALUE [{2}] -> {3:.4f} [dB] ".format(frame_number, selected_metric, self.color_space_type, metric_val))
+            print("FRAME {0}: {1}-VALUE [{2}] -> {3:.4f} [dB] ".format(frame_number, selected_metric,
+                                                                       self.color_space_type, metric_val))
 
             # append data to frames and data list
             self.frames.append(frame_number)
