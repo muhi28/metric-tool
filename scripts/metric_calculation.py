@@ -81,9 +81,9 @@ if __name__ == '__main__':
     start = time.time()
     metric_calc = MetricCalculator(video_cap_raw, video_cap_coded, colorSpaceType)
 
-    duration = time.time() - start
-
     frames, metric_data = metric_calc.perform_measuring(selected_metric=metricToCalculate)
+
+    duration = time.time() - start
 
     print("Duration of Measuring -> {0} sec.".format(duration))
     print("AVG-{0}-VALUE -> {1:.3f} [dB]".format(metricToCalculate, metric_calc.get_avg_value()))

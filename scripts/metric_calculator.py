@@ -1,6 +1,6 @@
 import numpy as np
 import math
-from skimage.measure import compare_ssim
+from skimage.measure import compare_ssim, compare_nrmse
 import cv2
 
 
@@ -63,6 +63,16 @@ class MetricCalculator:
 
         return 20 * math.log10(self.MAX_PIXEL / mse)
 
+    def __calc_nrmse(self, img1, img2, norm_type):
+        """
+            calculate normalized root mean-squared error (NRMSE)
+
+        :param img1: raw image
+        :param img2: coded image
+        :return: nrmse value
+        """
+        return compare_nrmse(img1, img2, norm_type)
+
     def check_selected_metric(self, selected_metric, img1, img2):
         """
             check which metric is selected
@@ -83,6 +93,11 @@ class MetricCalculator:
                 multi = True
 
             return self.__calc_ssim(img1=img1, img2=img2, multi_channel=multi)
+
+        elif selected_metric == "NRMSE":
+
+            return self.__calc_nrmse(img1=img1, img2=img2, norm_type='min-max')
+
         else:
             print("Selected metric not allowed!!!")
             exit(-1)
@@ -95,25 +110,27 @@ class MetricCalculator:
         :return: separated channels for selected color space
         """
 
+        raw_channels = []
+        coded_channels = []
+
         if self.color_space_type == "RGB":
             # extract r,g,b channels and calculate metric for each channel
-            b_raw, g_raw, r_raw = cv2.split(raw_frame)
-            b_cod, g_cod, r_cod = cv2.split(coded_frame)
-
-            return [b_raw, g_raw, r_raw], [b_cod, g_cod, r_cod]
+            raw_channels = cv2.split(raw_frame)
+            coded_channels = cv2.split(coded_frame)
 
         elif self.color_space_type == "YUV":
             raw_yuv = cv2.cvtColor(raw_frame, cv2.COLOR_BGR2YCrCb)
             coded_yuv = cv2.cvtColor(coded_frame, cv2.COLOR_BGR2YCrCb)
 
             # extract Y [Luminance] channel
-            y_raw, _, _ = cv2.split(raw_yuv)
-            y_coded, _, _ = cv2.split(coded_yuv)
+            raw_channels = cv2.split(raw_yuv)
+            coded_channels = cv2.split(coded_yuv)
 
-            return y_raw, y_coded
         else:
             print("Wrong color space selected!!!")
             exit(-1)
+
+        return raw_channels, coded_channels
 
     def perform_measuring(self, selected_metric):
         """
@@ -134,26 +151,25 @@ class MetricCalculator:
             if not raw_ret or not cod_ret or cv2.waitKey(1) & 0xFF == ord('q'):
                 break
 
-                # check selected color space
+            raw_channels, coded_channels = self.separate_channels(raw_frame, coded_frame)
+
+            # check selected color space
             if self.color_space_type == "RGB":
 
-                [b_raw, g_raw, r_raw], [b_cod, g_cod, r_cod] = self.separate_channels(raw_frame, coded_frame)
-
-                b_val = self.check_selected_metric(selected_metric, b_raw, b_cod)
-                g_val = self.check_selected_metric(selected_metric, g_raw, g_cod)
-                r_val = self.check_selected_metric(selected_metric, r_raw, r_cod)
+                b_val = self.check_selected_metric(selected_metric, raw_channels[0], coded_channels[0])
+                g_val = self.check_selected_metric(selected_metric, raw_channels[1], coded_channels[1])
+                r_val = self.check_selected_metric(selected_metric, raw_channels[2], coded_channels[2])
 
                 metric_val = (b_val + g_val + r_val)/3
                 # metric_val = self.check_selected_metric(selected_metric, raw_frame, coded_frame)
 
             elif self.color_space_type == "YUV":
 
-                y_raw, y_coded = self.separate_channels(raw_frame, coded_frame)
-
                 # perform psnr for y-channel
-                metric_val = self.check_selected_metric(selected_metric, y_raw, y_coded)
-                # upsnr = psnr(u_raw, u_coded)
-                # vpsnr = psnr(v_raw, v_coded)
+                metric_val = self.check_selected_metric(selected_metric, raw_channels[0], coded_channels[0])
+
+                # upsnr = self.check_selected_metric(selected_metric, raw_channels[1], coded_channels[1])
+                # vpsnr = self.check_selected_metric(selected_metric, raw_channels[2], coded_channels[2])
 
             else:
                 print("Wrong color space.....")
