@@ -126,6 +126,13 @@ class MetricCalculator:
             raw_channels = cv2.split(raw_yuv)
             coded_channels = cv2.split(coded_yuv)
 
+        elif self.color_space_type == "HVS":
+            raw_hsv = cv2.cvtColor(raw_frame, cv2.COLOR_BGR2HSV)
+            coded_hsv = cv2.cvtColor(coded_frame, cv2.COLOR_BGR2HSV)
+
+            raw_channels = cv2.split(raw_hsv)
+            coded_channels = cv2.split(coded_hsv)
+
         else:
             print("Wrong color space selected!!!")
             exit(-1)
@@ -153,23 +160,21 @@ class MetricCalculator:
 
             raw_channels, coded_channels = self.separate_channels(raw_frame, coded_frame)
 
-            # check selected color space
-            if self.color_space_type == "RGB":
-
-                b_val = self.check_selected_metric(selected_metric, raw_channels[0], coded_channels[0])
-                g_val = self.check_selected_metric(selected_metric, raw_channels[1], coded_channels[1])
-                r_val = self.check_selected_metric(selected_metric, raw_channels[2], coded_channels[2])
-
-                metric_val = (b_val + g_val + r_val)/3
-                # metric_val = self.check_selected_metric(selected_metric, raw_frame, coded_frame)
-
-            elif self.color_space_type == "YUV":
+            if self.color_space_type == "YUV":
 
                 # perform psnr for y-channel
                 metric_val = self.check_selected_metric(selected_metric, raw_channels[0], coded_channels[0])
 
                 # upsnr = self.check_selected_metric(selected_metric, raw_channels[1], coded_channels[1])
                 # vpsnr = self.check_selected_metric(selected_metric, raw_channels[2], coded_channels[2])
+
+                # check selected color space
+            elif self.color_space_type in {"RGB", "HVS"}:
+                val1 = self.check_selected_metric(selected_metric, raw_channels[0], coded_channels[0])
+                val2 = self.check_selected_metric(selected_metric, raw_channels[1], coded_channels[1])
+                val3 = self.check_selected_metric(selected_metric, raw_channels[2], coded_channels[2])
+
+                metric_val = (val1 + val2 + val3) / 3
 
             else:
                 print("Wrong color space.....")
