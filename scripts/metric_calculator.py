@@ -49,8 +49,8 @@ class MetricCalculator:
         :param img2: coded image
         :return: psnr value
         """
-        target_data = np.array(img2, dtype=np.float64)
-        ref_data = np.array(img1, dtype=np.float64)
+        target_data = np.array(img2, dtype=np.float32)
+        ref_data = np.array(img1, dtype=np.float32)
 
         diff = ref_data - target_data
         diff = diff.flatten('C')
@@ -73,7 +73,7 @@ class MetricCalculator:
         """
         return compare_nrmse(img1, img2, norm_type)
 
-    def check_selected_metric(self, selected_metric, img1, img2):
+    def calc_selected_metric(self, selected_metric, img1, img2):
         """
             check which metric is selected
         :param selected_metric: metric to calculate
@@ -89,7 +89,7 @@ class MetricCalculator:
 
             multi = False
 
-            if self.color_space_type == "RGB":
+            if self.color_space_type in {"RGB, HVS"}:
                 multi = True
 
             return self.__calc_ssim(img1=img1, img2=img2, multi_channel=multi)
@@ -163,16 +163,17 @@ class MetricCalculator:
             if self.color_space_type == "YUV":
 
                 # perform psnr for y-channel
-                metric_val = self.check_selected_metric(selected_metric, raw_channels[0], coded_channels[0])
+                metric_val = self.calc_selected_metric(selected_metric, raw_channels[0], coded_channels[0])
 
                 # upsnr = self.check_selected_metric(selected_metric, raw_channels[1], coded_channels[1])
                 # vpsnr = self.check_selected_metric(selected_metric, raw_channels[2], coded_channels[2])
 
                 # check selected color space
             elif self.color_space_type in {"RGB", "HVS"}:
-                val1 = self.check_selected_metric(selected_metric, raw_channels[0], coded_channels[0])
-                val2 = self.check_selected_metric(selected_metric, raw_channels[1], coded_channels[1])
-                val3 = self.check_selected_metric(selected_metric, raw_channels[2], coded_channels[2])
+
+                val1 = self.calc_selected_metric(selected_metric, raw_channels[0], coded_channels[0])
+                val2 = self.calc_selected_metric(selected_metric, raw_channels[1], coded_channels[1])
+                val3 = self.calc_selected_metric(selected_metric, raw_channels[2], coded_channels[2])
 
                 metric_val = (val1 + val2 + val3) / 3
 
