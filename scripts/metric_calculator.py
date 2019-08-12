@@ -1,11 +1,11 @@
 import numpy as np
-import math
-from skimage.measure import compare_ssim
-import cv2
+from math import log10, inf
+from skimage.measure import compare_ssim, compare_nrmse
+from scripts.utilities import separate_channels
+from cv2 import waitKey, CAP_PROP_FRAME_WIDTH, CAP_PROP_FRAME_HEIGHT
 
 
 class MetricCalculator:
-
     """
         provides the functionality to calculate different quality metrics
     """
@@ -14,14 +14,16 @@ class MetricCalculator:
         self.video_cap_raw = video_cap_raw
         self.video_cap_coded = video_cap_coded
         self.color_space_type = color_space_type
-        self.frames = []
-        self.dataCollection = []
+        self.frame_width = video_cap_raw.get(CAP_PROP_FRAME_WIDTH)
+        self.frame_height = video_cap_raw.get(CAP_PROP_FRAME_HEIGHT)
         self.avgValue = 0
+        self.num_frames = 1
         self.MAX_PIXEL = 255
 
     def __calc_ssim(self, img1, img2, multi_channel):
         """
             calculates the structural similarity between two images
+        :rtype: float
         :param img1: raw image (original)
         :param img2: coded image
         :return: ssim value
@@ -49,21 +51,32 @@ class MetricCalculator:
         :param img2: coded image
         :return: psnr value
         """
+
         target_data = np.array(img2, dtype=np.float64)
         ref_data = np.array(img1, dtype=np.float64)
 
         diff = ref_data - target_data
         diff = diff.flatten('C')
 
-        mse = math.sqrt(np.mean(diff ** 2.))
+        mse = np.sum(diff ** 2) / (self.frame_width * self.frame_height)
 
         # if black frames appear during the measurement (leading to mse=zero), return the maximum float value for them.
         if mse == 0:
-            return float("inf")
+            return inf
 
-        return 20 * math.log10(self.MAX_PIXEL / mse)
+        return 10 * log10((self.MAX_PIXEL ** 2) / mse)
 
-    def check_selected_metric(self, selected_metric, img1, img2):
+    def __calc_nrmse(self, img1, img2, norm_type):
+        """
+            calculate normalized root mean-squared error (NRMSE)
+
+        :param img1: raw image
+        :param img2: coded image
+        :return: nrmse value
+        """
+        return compare_nrmse(img1, img2, norm_type)
+
+    def calc_selected_metric(self, selected_metric, img1, img2):
         """
             check which metric is selected
         :param selected_metric: metric to calculate
@@ -71,48 +84,21 @@ class MetricCalculator:
         :param img2: coded image
         :return: metric value
         """
-        if selected_metric == "PSNR":
+        if selected_metric in {"PSNR", "WPSNR"}:
 
             return self.__calc_psnr(img1=img1, img2=img2)
 
         elif selected_metric == "SSIM":
 
-            multi = False
+            return self.__calc_ssim(img1=img1, img2=img2,
+                                    multi_channel=(True if self.color_space_type in {"RGB", "HVS"} else False))
 
-            if self.color_space_type == "RGB":
-                multi = True
+        elif selected_metric == "NRMSE":
 
-            return self.__calc_ssim(img1=img1, img2=img2, multi_channel=multi)
+            return self.__calc_nrmse(img1=img1, img2=img2, norm_type='min-max')
+
         else:
             print("Selected metric not allowed!!!")
-            exit(-1)
-
-    def separate_channels(self, raw_frame, coded_frame):
-        """
-            used to convert color space from RGB to YUV if needed and to separate the channels
-        :param raw_frame: original image
-        :param coded_frame: coded image
-        :return: separated channels for selected color space
-        """
-
-        if self.color_space_type == "RGB":
-            # extract r,g,b channels and calculate metric for each channel
-            b_raw, g_raw, r_raw = cv2.split(raw_frame)
-            b_cod, g_cod, r_cod = cv2.split(coded_frame)
-
-            return [b_raw, g_raw, r_raw], [b_cod, g_cod, r_cod]
-
-        elif self.color_space_type == "YUV":
-            raw_yuv = cv2.cvtColor(raw_frame, cv2.COLOR_BGR2YCrCb)
-            coded_yuv = cv2.cvtColor(coded_frame, cv2.COLOR_BGR2YCrCb)
-
-            # extract Y [Luminance] channel
-            y_raw, _, _ = cv2.split(raw_yuv)
-            y_coded, _, _ = cv2.split(coded_yuv)
-
-            return y_raw, y_coded
-        else:
-            print("Wrong color space selected!!!")
             exit(-1)
 
     def perform_measuring(self, selected_metric):
@@ -122,7 +108,8 @@ class MetricCalculator:
         :return: Tuple containing two lists (frame numbers and the corresponding metric values)
         """
         metric_val = 0
-        frame_number = 1
+        frames = []
+        data_collection = []
 
         while True:
 
@@ -131,29 +118,31 @@ class MetricCalculator:
 
             # check if the return value for frame capturing is false
             # -> this means that we have reached the end of the video
-            if not raw_ret or not cod_ret or cv2.waitKey(1) & 0xFF == ord('q'):
+            if not raw_ret or not cod_ret or waitKey(1) & 0xFF == ord('q'):
                 break
 
-                # check selected color space
-            if self.color_space_type == "RGB":
+            raw_channels, coded_channels = separate_channels(raw_frame, coded_frame, self.color_space_type)
 
-                [b_raw, g_raw, r_raw], [b_cod, g_cod, r_cod] = self.separate_channels(raw_frame, coded_frame)
-
-                b_val = self.check_selected_metric(selected_metric, b_raw, b_cod)
-                g_val = self.check_selected_metric(selected_metric, g_raw, g_cod)
-                r_val = self.check_selected_metric(selected_metric, r_raw, r_cod)
-
-                metric_val = (b_val + g_val + r_val)/3
-                # metric_val = self.check_selected_metric(selected_metric, raw_frame, coded_frame)
-
-            elif self.color_space_type == "YUV":
-
-                y_raw, y_coded = self.separate_channels(raw_frame, coded_frame)
+            if self.color_space_type == "YUV":
 
                 # perform psnr for y-channel
-                metric_val = self.check_selected_metric(selected_metric, y_raw, y_coded)
-                # upsnr = psnr(u_raw, u_coded)
-                # vpsnr = psnr(v_raw, v_coded)
+                metric_val = self.calc_selected_metric(selected_metric, raw_channels[0], coded_channels[0])
+
+                # check if weighted psnr is selected
+                if selected_metric == "WPSNR":
+                    u_psnr = self.calc_selected_metric(selected_metric, raw_channels[1], coded_channels[1])
+                    v_psnr = self.calc_selected_metric(selected_metric, raw_channels[2], coded_channels[2])
+
+                    metric_val = ((6 * metric_val) + u_psnr + v_psnr) / 8.0
+
+                # check selected color space
+            elif self.color_space_type in {"RGB", "HVS"}:
+
+                val1 = self.calc_selected_metric(selected_metric, raw_channels[0], coded_channels[0])
+                val2 = self.calc_selected_metric(selected_metric, raw_channels[1], coded_channels[1])
+                val3 = self.calc_selected_metric(selected_metric, raw_channels[2], coded_channels[2])
+
+                metric_val = (val1 + val2 + val3) / 3
 
             else:
                 print("Wrong color space.....")
@@ -161,19 +150,19 @@ class MetricCalculator:
 
                 # if there are black frames inside our test sequences then the psnr for them would be infinity
                 # therefore we need to check if there are some infinity values to skip them
-            if metric_val == math.inf:
+            if metric_val == inf:
                 continue
 
             # print current value
-            print("FRAME {0}: {1}-VALUE [{2}] -> {3:.4f} [dB] ".format(frame_number, selected_metric,
+            print("FRAME {0}: {1}-VALUE [{2}] -> {3:.3f} [dB] ".format(self.num_frames, selected_metric,
                                                                        self.color_space_type, metric_val))
 
             # append data to frames and data list
-            self.frames.append(frame_number)
-            self.dataCollection.append(metric_val)
+            frames.append(self.num_frames)
+            data_collection.append(metric_val)
 
             # increase frame number and add metric value to avg
-            frame_number += 1
+            self.num_frames += 1
             self.avgValue += metric_val
 
         # after the metric measuring has finished, close video capture
@@ -181,7 +170,7 @@ class MetricCalculator:
         self.video_cap_coded.release()
 
         # return tuple containing lists with frame numbers and metric measurements
-        return self.frames, self.dataCollection
+        return frames, data_collection
 
     def get_avg_value(self):
         """
@@ -190,4 +179,4 @@ class MetricCalculator:
         """
 
         # to get avg value divide the collected sum over all measurements by the number of frames
-        return self.avgValue / len(self.frames)
+        return self.avgValue / self.num_frames
