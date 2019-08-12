@@ -6,7 +6,6 @@ from cv2 import waitKey, CAP_PROP_FRAME_WIDTH, CAP_PROP_FRAME_HEIGHT
 
 
 class MetricCalculator:
-
     """
         provides the functionality to calculate different quality metrics
     """
@@ -85,7 +84,7 @@ class MetricCalculator:
         :param img2: coded image
         :return: metric value
         """
-        if selected_metric == "PSNR":
+        if selected_metric in {"PSNR", "WPSNR"}:
 
             return self.__calc_psnr(img1=img1, img2=img2)
 
@@ -129,8 +128,12 @@ class MetricCalculator:
                 # perform psnr for y-channel
                 metric_val = self.calc_selected_metric(selected_metric, raw_channels[0], coded_channels[0])
 
-                # upsnr = self.check_selected_metric(selected_metric, raw_channels[1], coded_channels[1])
-                # vpsnr = self.check_selected_metric(selected_metric, raw_channels[2], coded_channels[2])
+                # check if weighted psnr is selected
+                if selected_metric == "WPSNR":
+                    u_psnr = self.calc_selected_metric(selected_metric, raw_channels[1], coded_channels[1])
+                    v_psnr = self.calc_selected_metric(selected_metric, raw_channels[2], coded_channels[2])
+
+                    metric_val = ((6 * metric_val) + u_psnr + v_psnr) / 8.0
 
                 # check selected color space
             elif self.color_space_type in {"RGB", "HVS"}:
@@ -151,7 +154,7 @@ class MetricCalculator:
                 continue
 
             # print current value
-            print("FRAME {0}: {1}-VALUE [{2}] -> {3:.4f} [dB] ".format(self.num_frames, selected_metric,
+            print("FRAME {0}: {1}-VALUE [{2}] -> {3:.3f} [dB] ".format(self.num_frames, selected_metric,
                                                                        self.color_space_type, metric_val))
 
             # append data to frames and data list
