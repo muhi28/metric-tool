@@ -14,6 +14,8 @@ class MetricCalculator:
         self.video_cap_raw = video_cap_raw
         self.video_cap_coded = video_cap_coded
         self.color_space_type = color_space_type
+        self.frame_width = video_cap_raw.get(cv2.CAP_PROP_FRAME_WIDTH)
+        self.frame_height = video_cap_raw.get(cv2.CAP_PROP_FRAME_HEIGHT)
         self.frames = []
         self.dataCollection = []
         self.avgValue = 0
@@ -49,19 +51,20 @@ class MetricCalculator:
         :param img2: coded image
         :return: psnr value
         """
-        target_data = np.array(img2, dtype=np.float32)
-        ref_data = np.array(img1, dtype=np.float32)
+
+        target_data = np.array(img2, dtype=np.float64)
+        ref_data = np.array(img1, dtype=np.float64)
 
         diff = ref_data - target_data
         diff = diff.flatten('C')
 
-        mse = math.sqrt(np.mean(diff ** 2.))
+        mse = np.sum(diff ** 2) / (self.frame_width * self.frame_height)
 
         # if black frames appear during the measurement (leading to mse=zero), return the maximum float value for them.
         if mse == 0:
             return float("inf")
 
-        return 20 * math.log10(self.MAX_PIXEL / mse)
+        return 10 * math.log10((self.MAX_PIXEL ** 2) / mse)
 
     def __calc_nrmse(self, img1, img2, norm_type):
         """
