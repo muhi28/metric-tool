@@ -1,5 +1,5 @@
 import numpy as np
-from math import log10, inf
+from math import log10, inf, cos, pi
 from skimage.measure import compare_ssim, compare_nrmse
 from scripts.utilities import separate_channels
 from cv2 import waitKey, CAP_PROP_FRAME_WIDTH, CAP_PROP_FRAME_HEIGHT
@@ -76,6 +76,41 @@ class MetricCalculator:
         """
         return compare_nrmse(img1, img2, norm_type)
 
+    def __calc_ws_psnr(self, img1, img2):
+
+        ref_vals = np.array(img1, dtype=np.float64)
+        target_vals = np.array(img2, dtype=np.float64)
+
+        sum_val = w_sum = 0.0
+
+        for j in range((int(self.frame_height) - 1)):
+            for i in range((int(self.frame_width) - 1)):
+
+                pixel_weight = cos((j - (self.frame_height / 2) + 0.5) * (pi / self.frame_height))
+                diff = ref_vals[j, i] - target_vals[j, i]
+                diff = abs(diff)
+                sum_val += diff * diff * pixel_weight
+                w_sum += pixel_weight
+
+        sum_val = sum_val / w_sum
+
+        if sum_val == 0:
+            sum_val = 100
+        else:
+            sum_val = 10 * log10((self.MAX_PIXEL * self.MAX_PIXEL)/sum_val)
+
+        return sum_val
+
+    def __calc_weight(self):
+        w_map = []
+       # for j in range(self.frame_height):
+
+        #    for i in range(self.frame_width):
+         #       val = cos((j - (self.frame_height / 2) + 0.5) * (pi / self.frame_height))
+          #      w_map.append(val)
+
+        return w_map
+
     def calc_selected_metric(self, selected_metric, img1, img2):
         """
             check which metric is selected
@@ -87,6 +122,10 @@ class MetricCalculator:
         if selected_metric in {"PSNR", "WPSNR"}:
 
             return self.__calc_psnr(img1=img1, img2=img2)
+
+        elif selected_metric == "WS-PSNR":
+
+            return self.__calc_ws_psnr(img1=img1, img2=img2)
 
         elif selected_metric == "SSIM":
 
