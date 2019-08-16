@@ -14,8 +14,8 @@ class MetricCalculator:
         self.video_cap_raw = video_cap_raw
         self.video_cap_coded = video_cap_coded
         self.color_space_type = color_space_type
-        self.frame_width = video_cap_raw.get(CAP_PROP_FRAME_WIDTH)
-        self.frame_height = video_cap_raw.get(CAP_PROP_FRAME_HEIGHT)
+        self.frame_width = int(video_cap_raw.get(CAP_PROP_FRAME_WIDTH))
+        self.frame_height = int(video_cap_raw.get(CAP_PROP_FRAME_HEIGHT))
         self.avgValue = 0
         self.num_frames = 1
         self.MAX_PIXEL = 255
