@@ -1,7 +1,7 @@
 import numpy as np
 from math import log10, inf, cos, pi
 from skimage.measure import compare_ssim, compare_nrmse
-from scripts.utilities import separate_channels
+from utils.utilities import separate_channels
 from cv2 import waitKey, CAP_PROP_FRAME_WIDTH, CAP_PROP_FRAME_HEIGHT
 
 
