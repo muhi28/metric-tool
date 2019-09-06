@@ -111,30 +111,29 @@ class MetricCalculator:
 
         return w_map
 
-    def calc_selected_metric(self, selected_metric, img1, img2):
+    def calc_selected_metric(self, selected_metric, img_tuples):
         """
             check which metric is selected
+        :param img_tuples: containing both raw and coded image
         :param selected_metric: metric to calculate
-        :param img1: original image
-        :param img2: coded image
         :return: metric value
         """
         if selected_metric in {"PSNR", "WPSNR"}:
 
-            return self.__calc_psnr(img1=img1, img2=img2)
+            return self.__calc_psnr(img1=img_tuples[0], img2=img_tuples[1])
 
         elif selected_metric == "WS-PSNR":
 
-            return self.__calc_ws_psnr(img1=img1, img2=img2)
+            return self.__calc_ws_psnr(img1=img_tuples[0], img2=img_tuples[1])
 
         elif selected_metric == "SSIM":
 
-            return self.__calc_ssim(img1=img1, img2=img2,
+            return self.__calc_ssim(img1=img_tuples[0], img2=img_tuples[1],
                                     multi_channel=(True if self.color_space_type in {"RGB", "HVS"} else False))
 
         elif selected_metric == "NRMSE":
 
-            return self.__calc_nrmse(img1=img1, img2=img2, norm_type='min-max')
+            return self.__calc_nrmse(img1=img_tuples[0], img2=img_tuples[1], norm_type='min-max')
 
         else:
             print("Selected metric not allowed!!!")
@@ -165,21 +164,21 @@ class MetricCalculator:
             if self.color_space_type == "YUV":
 
                 # perform psnr for y-channel
-                metric_val = self.calc_selected_metric(selected_metric, raw_channels[0], coded_channels[0])
+                metric_val = self.calc_selected_metric(selected_metric, (raw_channels[0], coded_channels[0]))
 
                 # check if weighted psnr is selected
                 if selected_metric == "WPSNR":
-                    u_psnr = self.calc_selected_metric(selected_metric, raw_channels[1], coded_channels[1])
-                    v_psnr = self.calc_selected_metric(selected_metric, raw_channels[2], coded_channels[2])
+                    u_psnr = self.calc_selected_metric(selected_metric, (raw_channels[1], coded_channels[1]))
+                    v_psnr = self.calc_selected_metric(selected_metric, (raw_channels[2], coded_channels[2]))
 
                     metric_val = ((6 * metric_val) + u_psnr + v_psnr) / 8.0
 
                 # check selected color space
             elif self.color_space_type in {"RGB", "HVS"}:
 
-                val1 = self.calc_selected_metric(selected_metric, raw_channels[0], coded_channels[0])
-                val2 = self.calc_selected_metric(selected_metric, raw_channels[1], coded_channels[1])
-                val3 = self.calc_selected_metric(selected_metric, raw_channels[2], coded_channels[2])
+                val1 = self.calc_selected_metric(selected_metric, (raw_channels[0], coded_channels[0]))
+                val2 = self.calc_selected_metric(selected_metric, (raw_channels[1], coded_channels[1]))
+                val3 = self.calc_selected_metric(selected_metric, (raw_channels[2], coded_channels[2]))
 
                 metric_val = (val1 + val2 + val3) / 3
 
