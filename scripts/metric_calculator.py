@@ -83,14 +83,16 @@ class MetricCalculator:
 
         sum_val = w_sum = 0.0
 
+        diff = ref_vals - target_vals
+        diff = np.abs(diff) ** 2
+
+        pixel_weights = [cos((j - (self.frame_height / 2) + 0.5) * (pi / self.frame_height))
+                         for j in range(self.frame_height)]
+
         for j in range((int(self.frame_height) - 1)):
             for i in range((int(self.frame_width) - 1)):
-
-                pixel_weight = cos((j - (self.frame_height / 2) + 0.5) * (pi / self.frame_height))
-                diff = ref_vals[j, i] - target_vals[j, i]
-                diff = abs(diff)
-                sum_val += diff * diff * pixel_weight
-                w_sum += pixel_weight
+                sum_val += diff[j, i] * pixel_weights[j]
+                w_sum += pixel_weights[j]
 
         sum_val = sum_val / w_sum
 
