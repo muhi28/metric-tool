@@ -85,33 +85,33 @@ class MetricCalculator:
 
         diff = ref_vals - target_vals
         diff = np.abs(diff) ** 2
+        diff = diff.flatten('C')
 
         pixel_weights = [cos((j - (self.frame_height / 2) + 0.5) * (pi / self.frame_height))
                          for j in range(self.frame_height)]
 
-        for j in range((int(self.frame_height) - 1)):
-            for i in range((int(self.frame_width) - 1)):
-                sum_val += diff[j, i] * pixel_weights[j]
-                w_sum += pixel_weights[j]
+        counter = 0
+        weight_id = 0
+
+        for val in diff:
+
+            sum_val += val * pixel_weights[weight_id]
+            w_sum += pixel_weights[weight_id]
+
+            if counter == self.frame_width:
+                counter = 0
+                weight_id += 1
+
+            counter += 1
 
         sum_val = sum_val / w_sum
 
         if sum_val == 0:
             sum_val = 100
         else:
-            sum_val = 10 * log10((self.MAX_PIXEL * self.MAX_PIXEL)/sum_val)
+            sum_val = 10 * log10((self.MAX_PIXEL * self.MAX_PIXEL) / sum_val)
 
         return sum_val
-
-    def __calc_weight(self):
-        w_map = []
-       # for j in range(self.frame_height):
-
-        #    for i in range(self.frame_width):
-         #       val = cos((j - (self.frame_height / 2) + 0.5) * (pi / self.frame_height))
-          #      w_map.append(val)
-
-        return w_map
 
     def calc_selected_metric(self, selected_metric, img_tuples):
         """
