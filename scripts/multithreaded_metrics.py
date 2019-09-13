@@ -3,18 +3,18 @@ from __future__ import print_function
 import argparse
 import os
 import sys
-import numpy as np
 import cv2 as cv
+import numpy as np
 
-from math import log10, inf
-from cv2 import CAP_PROP_FRAME_WIDTH, CAP_PROP_FRAME_HEIGHT, CAP_PROP_FPS
+from cv2 import CAP_PROP_FRAME_WIDTH, CAP_PROP_FRAME_HEIGHT, CAP_PROP_FPS, split
 from multiprocessing.pool import ThreadPool
 from collections import deque
 from utils.utilities import separate_channels
-from utils.common_metrics import calc_psnr, calc_ws_psnr, calc_ssim, calc_nrmse
+from math import log10, cos, pi, inf
 
 num_frames = 0
 avg_value = 0
+MAX_PIXEL = 255
 
 
 class _StatValue:
@@ -32,6 +32,70 @@ class _StatValue:
 
 def _clock():
     return cv.getTickCount() / cv.getTickFrequency()
+
+
+def __calc_ws_psnr(img1, img2, t):
+    (height, width, _) = img1.shape
+
+    _ref_vals = np.array(img1, dtype=np.float64)
+    _target_vals = np.array(img2, dtype=np.float64)
+
+    _sum_val = _w_sum = 0.0
+
+    _diff = _ref_vals - _target_vals
+    _diff = np.abs(_diff) ** 2
+    _diff = _diff.flatten('C')
+
+    _pixel_weights = [cos((j - (height / 2) + 0.5) * (pi / height))
+                      for j in range(height)]
+
+    counter = 0
+    weight_id = 0
+
+    for val in _diff:
+
+        _sum_val += val * _pixel_weights[weight_id]
+        _w_sum += _pixel_weights[weight_id]
+
+        if counter == width:
+            counter = 0
+            weight_id += 1
+
+        counter += 1
+
+    _sum_val = _sum_val / _w_sum
+
+    if _sum_val == 0:
+        _sum_val = 100
+    else:
+        _sum_val = 10 * log10((MAX_PIXEL * MAX_PIXEL) / _sum_val)
+
+    return _sum_val, t
+
+
+def __calc_psnr(img1, img2):
+    """
+        calculates the peak-signal-to noise ration between two images
+    :param img1: original image
+    :param img2: coded image
+    :return: psnr value
+    """
+
+    dims = img1.shape
+
+    target_data = np.array(img2, dtype=np.float64)
+    ref_data = np.array(img1, dtype=np.float64)
+
+    diff = ref_data - target_data
+    diff = diff.flatten('C')
+
+    mse = np.sum(diff ** 2) / (dims[1] * dims[0])
+
+    # if black frames appear during the measurement (leading to mse=zero), return the maximum float value for them.
+    if mse == 0:
+        return inf
+
+    return 10 * log10((MAX_PIXEL ** 2) / mse)
 
 
 def __init_argparser():
@@ -68,6 +132,7 @@ def __check_video_resolutions(raw_cap, coded_cap):
     coded_width = int(coded_cap.get(CAP_PROP_FRAME_WIDTH))
     coded_height = int(coded_cap.get(CAP_PROP_FRAME_HEIGHT))
 
+    # at the same time we need to init the frame width and height four our common metrics
     return (raw_width == coded_width) and (raw_height == coded_height)
 
 
@@ -93,7 +158,7 @@ if __name__ == '__main__':
     _, _raw_file_basename = os.path.split(_rawFilePath)
     _, _coded_file_basename = os.path.split(_codedFilePath)
 
-    _num_threads = int(cv.getNumberOfCPUs() / 2)
+    _num_threads = int(cv.getNumberOfCPUs() / 2) + 1
     _pool = ThreadPool(processes=_num_threads)
     _pending = deque()
 
@@ -133,6 +198,8 @@ if __name__ == '__main__':
             has_raw_frames, raw_frame = _cap_raw.read()
             has_coded_frames, coded_frame = _cap_coded.read()
 
+            if not has_raw_frames or not has_coded_frames:
+                break
             # update frame interval and latency
             t = _clock()
             _frame_interval.update(t - _last_frame_time)
@@ -145,9 +212,9 @@ if __name__ == '__main__':
                 _yuv_raw = cv.cvtColor(raw_frame, cv.COLOR_BGR2YCrCb)
                 _yuv_coded = cv.cvtColor(coded_frame, cv.COLOR_BGR2YCrCb)
 
-                task = _pool.apply_async(calc_psnr, (_yuv_raw, _yuv_coded, t))
+                task = _pool.apply_async(__calc_psnr, (split(_yuv_raw)[0], split(_yuv_coded)[0], t))
             else:
-                task = _pool.apply_async(calc_psnr, (raw_frame, coded_frame, t))
+                task = _pool.apply_async(__calc_psnr, (raw_frame, coded_frame, t))
 
             # append task to queue
             _pending.append(task)
@@ -157,4 +224,4 @@ if __name__ == '__main__':
 
     print('calculation finished')
 
-    print("average {0} value    :  {1}".format(_metricToCalculate, _avg_value))
+    print("average {0} value    :  {1}".format(_metricToCalculate, _avg_value / _frame_count))

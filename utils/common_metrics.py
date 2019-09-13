@@ -19,6 +19,7 @@ def init_frame_data(height, width):
 def calc_ssim(img1, img2, multi_channel):
     """
         calculates the structural similarity between two images
+    :param multi_channel: checks if we are operating on more than one color channel
     :rtype: float
     :param img1: raw image (original)
     :param img2: coded image
