@@ -34,8 +34,15 @@ def _clock():
     return cv.getTickCount() / cv.getTickFrequency()
 
 
-def __calc_ws_psnr(img1, img2, t):
-    (height, width, _) = img1.shape
+def __calc_ws_psnr(img1, img2, _t):
+    """
+        performs the weighted spherical psnr calculation
+    :param img1: original frame
+    :param img2: coded/reference/reconstructed frame
+    :param _t: frame time
+    :return: ws-psnr value
+    """
+    height, width = img1.shape[0], img1.shape[1]
 
     _ref_vals = np.array(img1, dtype=np.float64)
     _target_vals = np.array(img2, dtype=np.float64)
@@ -70,14 +77,15 @@ def __calc_ws_psnr(img1, img2, t):
     else:
         _sum_val = 10 * log10((MAX_PIXEL * MAX_PIXEL) / _sum_val)
 
-    return _sum_val, t
+    return _sum_val, _t
 
 
-def __calc_psnr(img1, img2):
+def __calc_psnr(img1, img2, _t):
     """
         calculates the peak-signal-to noise ration between two images
     :param img1: original image
     :param img2: coded image
+    :param _t: frame time
     :return: psnr value
     """
 
@@ -95,7 +103,7 @@ def __calc_psnr(img1, img2):
     if mse == 0:
         return inf
 
-    return 10 * log10((MAX_PIXEL ** 2) / mse)
+    return 10 * log10((MAX_PIXEL ** 2) / mse), _t
 
 
 def __init_argparser():
@@ -134,6 +142,23 @@ def __check_video_resolutions(raw_cap, coded_cap):
 
     # at the same time we need to init the frame width and height four our common metrics
     return (raw_width == coded_width) and (raw_height == coded_height)
+
+
+def __get_metric(selected_metric):
+    """
+        used to check which metric function to execute
+    :param selected_metric: currently selected metric
+    :return: function representing the selected metric
+    """
+    switcher = {
+        "PSNR": __calc_psnr,
+        "WS-PSNR": __calc_ws_psnr
+    }
+
+    # get the selected metric to calculate
+    m = switcher.get(selected_metric, lambda: "PSNR")
+
+    return m
 
 
 if __name__ == '__main__':
@@ -179,16 +204,27 @@ if __name__ == '__main__':
     print("Color Space -> {0}".format(_colorSpaceType))
     print("Selected Metric -> {0}\n".format(_metricToCalculate))
 
+    # define metric which would be calculated
+    _metric_func = __get_metric(_metricToCalculate)
+
+    # start the calculation
     while True:
 
         # process generated tasks
         while len(_pending) > 0 and _pending[0].ready():
-            value, frame_time = _pending.popleft().get()
+            # pop element from rightmost side
+            value, frame_time = _pending.pop().get()
+
+            # update latency
             _latency.update(_clock() - frame_time)
+
+            # print current calculation
             print("latency        :  %.1f ms" % (_latency.value * 1000))
             print("frame interval :  %.1f ms" % (_frame_interval.value * 1000))
             print("PSNR Value     :  %.3f [dB]" % value)
             print("Frame count    :  {0}\n".format(_frame_count))
+
+            # add current value to avg and increase frame count
             _avg_value += value
             _frame_count += 1
 
@@ -200,11 +236,13 @@ if __name__ == '__main__':
 
             if not has_raw_frames or not has_coded_frames:
                 break
+
             # update frame interval and latency
             t = _clock()
             _frame_interval.update(t - _last_frame_time)
             _last_frame_time = t
 
+            # check whether YUV or RGB, etc. color space is selected
             if _colorSpaceType == "YUV":
 
                 # _raw_channels, _coded_channels = separate_channels(raw_frame, coded_frame, _colorSpaceType)
@@ -212,12 +250,13 @@ if __name__ == '__main__':
                 _yuv_raw = cv.cvtColor(raw_frame, cv.COLOR_BGR2YCrCb)
                 _yuv_coded = cv.cvtColor(coded_frame, cv.COLOR_BGR2YCrCb)
 
-                task = _pool.apply_async(__calc_psnr, (split(_yuv_raw)[0], split(_yuv_coded)[0], t))
+                task = _pool.apply_async(_metric_func, (split(_yuv_raw)[0], split(_yuv_coded)[0], t))
             else:
-                task = _pool.apply_async(__calc_psnr, (raw_frame, coded_frame, t))
+                # if selected color space is RGB, etc. -> then calculate the metric using all 3 channels combined
+                task = _pool.apply_async(_metric_func, (raw_frame, coded_frame, t))
 
-            # append task to queue
-            _pending.append(task)
+            # append task to left side of queue
+            _pending.appendleft(task)
 
         if cv.waitKey(1) == ord('q'):
             break

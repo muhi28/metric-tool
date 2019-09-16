@@ -50,13 +50,15 @@ def calc_psnr(img1, img2):
     :return: psnr value
     """
 
+    (height, width, _) = img1.shape
+
     target_data = np.array(img2, dtype=np.float64)
     ref_data = np.array(img1, dtype=np.float64)
 
     diff = ref_data - target_data
     diff = diff.flatten('C')
 
-    mse = np.sum(diff ** 2) / (frame_width * frame_height)
+    mse = np.sum(diff ** 2) / (height * width)
 
     # if black frames appear during the measurement (leading to mse=zero), return the maximum float value for them.
     if mse == 0:
