@@ -210,14 +210,14 @@ if __name__ == '__main__':
 
     start_time = time()
 
-    with ThreadPool(processes=_num_threads) as _pool:
+    with Pool(processes=_num_threads) as _pool:
         # start the calculation
         while True:
 
             # process generated tasks
             while len(_pending) > 0 and _pending[0].ready():
                 # pop element from rightmost side
-                value, frame_time = _pending.popleft().get()
+                value, frame_time = _pending.pop().get()
 
                 # update latency
                 _latency.update(_clock() - frame_time)
@@ -260,10 +260,7 @@ if __name__ == '__main__':
                     task = _pool.apply_async(_metric_func, (raw_frame, coded_frame, t))
 
                 # append task to left side of queue
-                _pending.append(task)
-
-            if cv.waitKey(1) == ord('q'):
-                break
+                _pending.appendleft(task)
 
     print('calculation finished\n')
 
