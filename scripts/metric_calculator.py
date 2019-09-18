@@ -1,8 +1,8 @@
-import numpy as np
-from math import log10, inf
-from skimage.measure import compare_ssim, compare_nrmse
-from scripts.utilities import separate_channels
+from math import inf
+
+from utils.utilities import separate_channels
 from cv2 import waitKey, CAP_PROP_FRAME_WIDTH, CAP_PROP_FRAME_HEIGHT
+from utils.common_metrics import init_frame_data, calc_psnr, calc_ws_psnr, calc_ssim, calc_nrmse
 
 
 class MetricCalculator:
@@ -14,88 +14,36 @@ class MetricCalculator:
         self.video_cap_raw = video_cap_raw
         self.video_cap_coded = video_cap_coded
         self.color_space_type = color_space_type
-        self.frame_width = video_cap_raw.get(CAP_PROP_FRAME_WIDTH)
-        self.frame_height = video_cap_raw.get(CAP_PROP_FRAME_HEIGHT)
+        self.frame_width = int(video_cap_raw.get(CAP_PROP_FRAME_WIDTH))
+        self.frame_height = int(video_cap_raw.get(CAP_PROP_FRAME_HEIGHT))
         self.avgValue = 0
         self.num_frames = 1
         self.MAX_PIXEL = 255
+        init_frame_data(self.frame_height, self.frame_width)
 
-    def __calc_ssim(self, img1, img2, multi_channel):
-        """
-            calculates the structural similarity between two images
-        :rtype: float
-        :param img1: raw image (original)
-        :param img2: coded image
-        :return: ssim value
-
-        The following settings are necessary to match the implementation of Wang et. al. [1]
-
-        References:
-        --------
-
-        .. [1] Wang, Z., Bovik, A. C., Sheikh, H. R., & Simoncelli, E. P.
-           (2004). Image quality assessment: From error visibility to
-           structural similarity. IEEE Transactions on Image Processing,
-           13, 600-612.
-           https://ece.uwaterloo.ca/~z70wang/publications/ssim.pdf,
-           :DOI:`10.1109/TIP.2003.819861`
-        """
-
-        return compare_ssim(img1, img2, gaussian_weights=True,
-                            sigma=1.5, use_sample_covariance=False, multichannel=multi_channel)
-
-    def __calc_psnr(self, img1, img2):
-        """
-            calculates the peak-signal-to noise ration between two images
-        :param img1: original image
-        :param img2: coded image
-        :return: psnr value
-        """
-
-        target_data = np.array(img2, dtype=np.float64)
-        ref_data = np.array(img1, dtype=np.float64)
-
-        diff = ref_data - target_data
-        diff = diff.flatten('C')
-
-        mse = np.sum(diff ** 2) / (self.frame_width * self.frame_height)
-
-        # if black frames appear during the measurement (leading to mse=zero), return the maximum float value for them.
-        if mse == 0:
-            return inf
-
-        return 10 * log10((self.MAX_PIXEL ** 2) / mse)
-
-    def __calc_nrmse(self, img1, img2, norm_type):
-        """
-            calculate normalized root mean-squared error (NRMSE)
-
-        :param img1: raw image
-        :param img2: coded image
-        :return: nrmse value
-        """
-        return compare_nrmse(img1, img2, norm_type)
-
-    def calc_selected_metric(self, selected_metric, img1, img2):
+    def calc_selected_metric(self, selected_metric, img_tuples):
         """
             check which metric is selected
+        :param img_tuples: containing both raw and coded image
         :param selected_metric: metric to calculate
-        :param img1: original image
-        :param img2: coded image
         :return: metric value
         """
         if selected_metric in {"PSNR", "WPSNR"}:
 
-            return self.__calc_psnr(img1=img1, img2=img2)
+            return calc_psnr(img1=img_tuples[0], img2=img_tuples[1])
+
+        elif selected_metric == "WS-PSNR":
+
+            return calc_ws_psnr(img1=img_tuples[0], img2=img_tuples[1])
 
         elif selected_metric == "SSIM":
 
-            return self.__calc_ssim(img1=img1, img2=img2,
-                                    multi_channel=(True if self.color_space_type in {"RGB", "HVS"} else False))
+            return calc_ssim(img1=img_tuples[0], img2=img_tuples[1],
+                             multi_channel=(True if self.color_space_type in {"RGB", "HVS"} else False))
 
         elif selected_metric == "NRMSE":
 
-            return self.__calc_nrmse(img1=img1, img2=img2, norm_type='min-max')
+            return calc_nrmse(img1=img_tuples[0], img2=img_tuples[1], norm_type='min-max')
 
         else:
             print("Selected metric not allowed!!!")
@@ -126,21 +74,21 @@ class MetricCalculator:
             if self.color_space_type == "YUV":
 
                 # perform psnr for y-channel
-                metric_val = self.calc_selected_metric(selected_metric, raw_channels[0], coded_channels[0])
+                metric_val = self.calc_selected_metric(selected_metric, (raw_channels[0], coded_channels[0]))
 
                 # check if weighted psnr is selected
                 if selected_metric == "WPSNR":
-                    u_psnr = self.calc_selected_metric(selected_metric, raw_channels[1], coded_channels[1])
-                    v_psnr = self.calc_selected_metric(selected_metric, raw_channels[2], coded_channels[2])
+                    u_psnr = self.calc_selected_metric(selected_metric, (raw_channels[1], coded_channels[1]))
+                    v_psnr = self.calc_selected_metric(selected_metric, (raw_channels[2], coded_channels[2]))
 
                     metric_val = ((6 * metric_val) + u_psnr + v_psnr) / 8.0
 
                 # check selected color space
             elif self.color_space_type in {"RGB", "HVS"}:
 
-                val1 = self.calc_selected_metric(selected_metric, raw_channels[0], coded_channels[0])
-                val2 = self.calc_selected_metric(selected_metric, raw_channels[1], coded_channels[1])
-                val3 = self.calc_selected_metric(selected_metric, raw_channels[2], coded_channels[2])
+                val1 = self.calc_selected_metric(selected_metric, (raw_channels[0], coded_channels[0]))
+                val2 = self.calc_selected_metric(selected_metric, (raw_channels[1], coded_channels[1]))
+                val3 = self.calc_selected_metric(selected_metric, (raw_channels[2], coded_channels[2]))
 
                 metric_val = (val1 + val2 + val3) / 3
 
