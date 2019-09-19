@@ -177,7 +177,7 @@ if __name__ == '__main__':
     _colorSpaceType = _args["colorspace"]  # get selected color space to calculate the metrics
     _metricToCalculate = _args["metric"]  # get selected metric to calculate
 
-    _cap_raw = cv.VideoCapture(_rawFilePath)
+
     # _cap_coded = cv.VideoCapture(_codedFilesPath[0])
 
     # parse raw basename
@@ -189,18 +189,10 @@ if __name__ == '__main__':
     # high performance object used to cache async tasks
     _task_buffer = deque()
 
-    # init necessary stuff
-    _latency = _StatValue()
-    _frame_interval = _StatValue()
-    _last_frame_time = _clock()
-    _frame_count = 0
-    _avg_value = 0.0
-
     print("Start calculation ....\n")
 
     print("Settings:")
     print("Number of processes    :  {0}".format(_num_processes))
-    print("FPS -> {0}".format(_cap_raw.get(CAP_PROP_FPS)))
     print("Color Space -> {0}".format(_colorSpaceType))
     print("Selected Metric -> {0}".format(_metricToCalculate))
     print("Selected raw video file -> {0}".format(_raw_file_basename))
@@ -214,8 +206,20 @@ if __name__ == '__main__':
     # open a pool of processes used to calculate the selected metric
     with Pool(processes=_num_processes) as _pool:
 
+        _latency = _StatValue()
+        _frame_interval = _StatValue()
+        _last_frame_time = _clock()
+
         # perform calculation for each given encoded file
-        for i, encoded_file in enumerate(_codedFilesPath):
+        for encoded_file in _codedFilesPath:
+
+            # init necessary stuff
+
+            _frame_count = 1
+            _avg_value = 0.0
+
+            # set current raw video capture
+            _cap_raw = cv.VideoCapture(_rawFilePath)
 
             # set current encoded video capture
             _cap_coded = cv.VideoCapture(encoded_file)
@@ -281,7 +285,3 @@ if __name__ == '__main__':
             # print duration of measuring and average metric value
             print("duration of measuring    : {0} ms".format((time() - start_time)))
             print("average {0} value    :  {1}\n".format(_metricToCalculate, _avg_value / _frame_count))
-
-            # reset current values for each iteration
-            _frame_count = 0
-            _avg_value = 0.0
