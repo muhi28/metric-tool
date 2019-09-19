@@ -1,5 +1,5 @@
-
 import argparse
+import gc
 import os
 import sys
 from time import time
@@ -117,7 +117,7 @@ def __init_argparser():
 
     # add argument elements to argparse
     arg_parser.add_argument("-r", "--raw", required=True, help="original input video")
-    arg_parser.add_argument("-e", "--encoded", required=True, help="encoded input video")
+    arg_parser.add_argument("-e", "--encoded", nargs="+", required=True, help="encoded input video")
     arg_parser.add_argument("-c", "--colorspace", required=True, help="color space in which to perform measurements")
     arg_parser.add_argument("-m", "--metric", required=True, help="metric to measure")
 
@@ -173,96 +173,115 @@ if __name__ == '__main__':
 
     # extract parameters
     _rawFilePath = _args["raw"]  # get raw file path
-    _codedFilePath = _args["encoded"]  # get coded file path
+    _codedFilesPath = _args["encoded"]  # get coded file path
     _colorSpaceType = _args["colorspace"]  # get selected color space to calculate the metrics
     _metricToCalculate = _args["metric"]  # get selected metric to calculate
 
     _cap_raw = cv.VideoCapture(_rawFilePath)
-    _cap_coded = cv.VideoCapture(_codedFilePath)
+    # _cap_coded = cv.VideoCapture(_codedFilesPath[0])
 
-    # parse basename
+    # parse raw basename
     _, _raw_file_basename = os.path.split(_rawFilePath)
-    _, _coded_file_basename = os.path.split(_codedFilePath)
 
-    _num_threads = int(cv.getNumberOfCPUs() / 2) + 1
-    # _pool = Pool(processes=_num_threads)
-    _pending = deque()
+    # set number of processes
+    _num_processes = int(cv.getNumberOfCPUs() / 2) + 1
 
+    # high performance object used to cache async tasks
+    _task_buffer = deque()
+
+    # init necessary stuff
     _latency = _StatValue()
     _frame_interval = _StatValue()
     _last_frame_time = _clock()
-    _frame_count = 1
-    _avg_value = 0
+    _frame_count = 0
+    _avg_value = 0.0
 
     print("Start calculation ....\n")
 
     print("Settings:")
-    print("number of threads    :  {0}".format(_num_threads))
-    print("color space -> {0}".format(_colorSpaceType))
-    print("Selected raw video file -> {0}".format(_raw_file_basename))
-    print("Selected coded video file -> {0}".format(_coded_file_basename))
+    print("Number of processes    :  {0}".format(_num_processes))
     print("FPS -> {0}".format(_cap_raw.get(CAP_PROP_FPS)))
     print("Color Space -> {0}".format(_colorSpaceType))
-    print("Selected Metric -> {0}\n".format(_metricToCalculate))
+    print("Selected Metric -> {0}".format(_metricToCalculate))
+    print("Selected raw video file -> {0}".format(_raw_file_basename))
 
     # define metric which would be calculated
     _metric_func = __get_metric(_metricToCalculate)
 
+    # get start time
     start_time = time()
 
-    with Pool(processes=_num_threads) as _pool:
-        # start the calculation
-        while True:
+    # open a pool of processes used to calculate the selected metric
+    with Pool(processes=_num_processes) as _pool:
 
-            # process generated tasks
-            while len(_pending) > 0 and _pending[0].ready():
-                # pop element from rightmost side
-                value, frame_time = _pending.pop().get()
+        # perform calculation for each given encoded file
+        for i, encoded_file in enumerate(_codedFilesPath):
 
-                # update latency
-                _latency.update(_clock() - frame_time)
+            # set current encoded video capture
+            _cap_coded = cv.VideoCapture(encoded_file)
 
-                # print current calculation
-                print("latency        :  %.1f ms" % (_latency.value * 1000))
-                print("frame interval :  %.1f ms" % (_frame_interval.value * 1000))
-                print("PSNR Value     :  %.3f [dB]" % value)
-                print("Frame count    :  {0}\n".format(_frame_count))
+            # cut out the video name from the given video path
+            _, _coded_file_basename = os.path.split(encoded_file)
+            print("Selected coded video file -> {0}\n".format(_coded_file_basename))
 
-                # add current value to avg and increase frame count
-                _avg_value += value
-                _frame_count += 1
+            # start the calculation
+            while True:
 
-            # if length of dequeue is smaller than number of available threads -> start generating new tasks
-            if len(_pending) < _num_threads:
-                # read frames
-                has_raw_frames, raw_frame = _cap_raw.read()
-                has_coded_frames, coded_frame = _cap_coded.read()
+                # process generated tasks
+                while len(_task_buffer) > 0 and _task_buffer[0].ready():
+                    # pop element from rightmost side
+                    value, frame_time = _task_buffer.popleft().get()
 
-                if not has_raw_frames or not has_coded_frames:
-                    break
+                    # update latency
+                    _latency.update(_clock() - frame_time)
 
-                # update frame interval and latency
-                t = _clock()
-                _frame_interval.update(t - _last_frame_time)
-                _last_frame_time = t
+                    # print current calculation
+                    print("latency        :  %.1f ms" % (_latency.value * 1000))
+                    print("frame interval :  %.1f ms" % (_frame_interval.value * 1000))
+                    print("PSNR Value     :  %.3f [dB]" % value)
+                    print("Frame count    :  {0}\n".format(_frame_count))
 
-                # check whether YUV or RGB, etc. color space is selected
-                if _colorSpaceType == "YUV":
+                    # add current value to avg and increase frame count
+                    _avg_value += value
+                    _frame_count += 1
 
-                    # _raw_channels, _coded_channels = separate_channels(raw_frame, coded_frame, _colorSpaceType)
-                    # generate new asynchronous task
-                    _yuv_raw = cv.cvtColor(raw_frame, cv.COLOR_BGR2YCrCb)
-                    _yuv_coded = cv.cvtColor(coded_frame, cv.COLOR_BGR2YCrCb)
+                # if length of dequeue is smaller than number of available threads -> start generating new tasks
+                if len(_task_buffer) < _num_processes:
+                    # read frames
+                    has_raw_frames, raw_frame = _cap_raw.read()
+                    has_coded_frames, coded_frame = _cap_coded.read()
 
-                    task = _pool.apply_async(_metric_func, (split(_yuv_raw)[0], split(_yuv_coded)[0], t))
-                else:
-                    # if selected color space is RGB, etc. -> then calculate the metric using all 3 channels combined
-                    task = _pool.apply_async(_metric_func, (raw_frame, coded_frame, t))
+                    if not has_raw_frames or not has_coded_frames:
+                        break
 
-                # append task to left side of queue
-                _pending.appendleft(task)
+                    # update frame interval and latency
+                    t = _clock()
+                    _frame_interval.update(t - _last_frame_time)
+                    _last_frame_time = t
 
-    print('calculation finished\n')
+                    # check whether YUV or RGB, etc. color space is selected
+                    if _colorSpaceType == "YUV":
 
-    print("duration of measureing    : {0} ms".format((time() - start_time)))
-    print("average {0} value    :  {1}".format(_metricToCalculate, _avg_value / _frame_count))
+                        # _raw_channels, _coded_channels = separate_channels(raw_frame, coded_frame, _colorSpaceType)
+                        # generate new asynchronous task
+                        _yuv_raw = cv.cvtColor(raw_frame, cv.COLOR_BGR2YCrCb)
+                        _yuv_coded = cv.cvtColor(coded_frame, cv.COLOR_BGR2YCrCb)
+
+                        task = _pool.apply_async(_metric_func, (split(_yuv_raw)[0], split(_yuv_coded)[0], t))
+                    else:
+                        # if selected color space is RGB, etc. -> then calculate the metric using all 3 channels
+                        # combined
+                        task = _pool.apply_async(_metric_func, (raw_frame, coded_frame, t))
+
+                    # append task to left side of queue
+                    _task_buffer.append(task)
+
+            print('calculation finished\n')
+
+            # print duration of measuring and average metric value
+            print("duration of measuring    : {0} ms".format((time() - start_time)))
+            print("average {0} value    :  {1}\n".format(_metricToCalculate, _avg_value / _frame_count))
+
+            # reset current values for each iteration
+            _frame_count = 0
+            _avg_value = 0.0
