@@ -1,6 +1,5 @@
 from math import log10, inf, cos, pi
-from skimage.measure import compare_ssim, compare_nrmse
-
+import skimage.measure
 import numpy as np
 
 frame_width = 0
@@ -38,8 +37,8 @@ def calc_ssim(img1, img2, multi_channel):
        :DOI:`10.1109/TIP.2003.819861`
     """
 
-    return compare_ssim(img1, img2, gaussian_weights=True,
-                        sigma=1.5, use_sample_covariance=False, multichannel=multi_channel)
+    return skimage.measure.compare_ssim(img1, img2, gaussian_weights=True,
+                                        sigma=1.5, use_sample_covariance=False, multichannel=multi_channel)
 
 
 def calc_psnr(img1, img2):
@@ -75,7 +74,7 @@ def calc_nrmse(img1, img2, norm_type):
     :param img2: coded image
     :return: nrmse value
     """
-    return compare_nrmse(img1, img2, norm_type)
+    return skimage.measure.compare_nrmse(img1, img2, norm_type)
 
 
 def calc_ws_psnr(img1, img2):
