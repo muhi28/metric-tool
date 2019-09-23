@@ -184,7 +184,7 @@ if __name__ == '__main__':
     _, _raw_file_basename = os.path.split(_rawFilePath)
 
     # set number of processes
-    _num_processes = int(cv.getNumberOfCPUs() / 2) + 1
+    _num_processes = int(cv.getNumberOfCPUs()) * 2
 
     # high performance object used to cache async tasks
     _task_buffer = deque()
@@ -234,14 +234,14 @@ if __name__ == '__main__':
                 # process generated tasks
                 while len(_task_buffer) > 0 and _task_buffer[0].ready():
                     # pop element from rightmost side
-                    value, frame_time = _task_buffer.popleft().get()
+                    value, frame_time = _task_buffer.pop().get()
 
                     # update latency
                     _latency.update(_clock() - frame_time)
 
                     # print current calculation
-                    print("latency        :  %.1f ms" % (_latency.value * 1000))
-                    print("frame interval :  %.1f ms" % (_frame_interval.value * 1000))
+                    # print("latency        :  %.1f ms" % (_latency.value * 1000))
+                    # print("frame interval :  %.1f ms" % (_frame_interval.value * 1000))
                     print("PSNR Value     :  %.3f [dB]" % value)
                     print("Frame count    :  {0}\n".format(_frame_count))
 
@@ -278,7 +278,7 @@ if __name__ == '__main__':
                         task = _pool.apply_async(_metric_func, (raw_frame, coded_frame, t))
 
                     # append task to left side of queue
-                    _task_buffer.append(task)
+                    _task_buffer.appendleft(task)
 
             print('calculation finished\n')
 
