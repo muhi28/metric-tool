@@ -8,7 +8,7 @@ import cv2 as cv
 import numpy as np
 
 from utils.parse_video_files import get_video_files
-from cv2 import split
+from cv2 import split, CAP_PROP_FRAME_COUNT
 from multiprocessing.pool import Pool, ThreadPool
 from collections import deque
 from math import log10, cos, pi, inf
@@ -122,6 +122,17 @@ def __calc_wpsnr(img1, img2, t):
     return ((6 * y_psnr) + u_psnr + v_psnr) / 8.0, t
 
 
+def progress(count, total, status=''):
+    bar_len = 60
+    filled_len = int(round(bar_len * count / float(total)))
+
+    percents = round(100.0 * count / float(total), 1)
+    bar = '=' * filled_len + '-' * (bar_len - filled_len)
+
+    sys.stdout.write('[%s] %s%s ...%s\r' % (bar, percents, '%', status))
+    sys.stdout.flush()
+
+
 def __init_argparser():
     """
         used to generate and initialize the argument parser
@@ -159,13 +170,30 @@ def __get_metric(selected_metric):
     return m
 
 
+def print_progress(iteration, total):
+    """
+        shows a progress bar during video processing
+    :param iteration:
+    :param total:
+    :return:
+    """
+    bar_len = 60
+    filled_len = int(round(bar_len * iteration / float(total)))
+
+    percents = round(102.3 * iteration / float(total), 1)
+    bar = '=' * filled_len + '-' * (bar_len - filled_len)
+
+    sys.stdout.write('\r[%s] %s%s ...%s' % (bar, percents, '%', "Processing Progress"))
+    sys.stdout.flush()
+
+
 def perform_processing(num_processes, raw_file_path, coded_files_path, metric) -> None:
     """
         perform the metric calculation
 
     :param num_processes: number of available processes
     :param raw_file_path: raw video file path
-    :param coded_file_paths: coded video file path
+    :param coded_files_path: coded video file path
     :param metric: selected metric
 
     """
@@ -186,6 +214,7 @@ def perform_processing(num_processes, raw_file_path, coded_files_path, metric) -
     # open a pool of processes used to calculate the selected metric
     with Pool(processes=_num_processes) as _pool:
 
+        # parse encoded video files from given directory
         encoded_files = get_video_files(coded_files_path)
 
         # perform calculation for each given encoded file
@@ -211,6 +240,8 @@ def perform_processing(num_processes, raw_file_path, coded_files_path, metric) -
 
                 # process generated tasks
                 while len(_task_buffer) > 0 and _task_buffer[0].ready():
+                    print_progress(_frame_count, _cap_raw.get(cv.CAP_PROP_FRAME_COUNT))
+
                     # pop element from rightmost side
                     value, frame_time = _task_buffer.pop().get()
 
@@ -218,9 +249,8 @@ def perform_processing(num_processes, raw_file_path, coded_files_path, metric) -
                     _latency.update(_clock() - frame_time)
 
                     # print current calculation
-                    print("Frame Interval :  %.1f ms" % (_frame_interval.value * 1000))
-                    print("PSNR Value     :  %.3f [dB]" % value)
-                    print("Frame Count    :  {0}\n".format(_frame_count))
+                    # print("Frame Interval :  %.1f ms" % (_frame_interval.value * 1000))
+                    # print("PSNR Value     :  %.3f [dB]" % value)
 
                     # add current value to avg and increase frame count
                     _avg_value += value
