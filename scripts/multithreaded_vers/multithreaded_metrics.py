@@ -35,21 +35,16 @@ def _clock():
     return cv.getTickCount() / cv.getTickFrequency()
 
 
-def __calc_ssim(img1, img2, _t):
+def __calc_ssim(img1, img2, t):
     pass
 
 
-def __calc_wpsnr(img1, img2, _t):
-    pass
-
-
-
-def __calc_ws_psnr(img1, img2, _t):
+def __calc_ws_psnr(img1, img2, t):
     """
         performs the weighted spherical psnr calculation
     :param img1: original frame
     :param img2: coded/reference/reconstructed frame
-    :param _t: frame time
+    :param t: frame time
     :return: ws-psnr value
     """
     height, width = img1.shape[0], img1.shape[1]
@@ -87,15 +82,15 @@ def __calc_ws_psnr(img1, img2, _t):
     else:
         _sum_val = 10 * log10((MAX_PIXEL * MAX_PIXEL) / _sum_val)
 
-    return _sum_val, _t
+    return _sum_val, t
 
 
-def __calc_psnr(img1, img2, _t):
+def __calc_psnr(img1, img2, t):
     """
         calculates the peak-signal-to noise ration between two images
     :param img1: original image
     :param img2: coded image
-    :param _t: frame time
+    :param t: frame time
     :return: psnr value
     """
 
@@ -113,7 +108,18 @@ def __calc_psnr(img1, img2, _t):
     if mse == 0:
         return inf
 
-    return 10 * log10((MAX_PIXEL ** 2) / mse), _t
+    return 10 * log10((MAX_PIXEL ** 2) / mse), t
+
+
+def __calc_wpsnr(img1, img2, t):
+    y_raw, u_raw, v_raw = split(img1)
+    y_coded, u_coded, v_coded = split(img2)
+
+    y_psnr, _ = __calc_psnr(y_raw, y_coded, t)
+    u_psnr, _ = __calc_psnr(u_raw, u_coded, t)
+    v_psnr, _ = __calc_psnr(v_raw, v_coded, t)
+
+    return ((6 * y_psnr) + u_psnr + v_psnr) / 8.0, t
 
 
 def __init_argparser():
@@ -153,7 +159,16 @@ def __get_metric(selected_metric):
     return m
 
 
-def perform_processing(num_processes, raw_file_path, coded_file_paths, metric):
+def perform_processing(num_processes, raw_file_path, coded_file_paths, metric) -> None:
+    """
+        perform the metric calculation
+
+    :param num_processes: number of available processes
+    :param raw_file_path: raw video file path
+    :param coded_file_paths: coded video file path
+    :param metric: selected metric
+
+    """
     # define metric which would be calculated
     _metric_func = __get_metric(_metricToCalculate)
 
@@ -240,7 +255,12 @@ def perform_processing(num_processes, raw_file_path, coded_file_paths, metric):
                         _yuv_raw = cv.cvtColor(raw_frame, cv.COLOR_BGR2YCrCb)
                         _yuv_coded = cv.cvtColor(coded_frame, cv.COLOR_BGR2YCrCb)
 
-                        task = _pool.apply_async(_metric_func, (split(_yuv_raw)[0], split(_yuv_coded)[0], t))
+                        # check which metric is selected
+                        if metric in {"PSNR", "WS-PSNR"}:
+                            task = _pool.apply_async(_metric_func, (split(_yuv_raw)[0], split(_yuv_coded)[0], t))
+                        else:
+                            task = _pool.apply_async(_metric_func, (_yuv_raw, _yuv_coded, t))
+
                     else:
                         # if selected color space is RGB, etc. -> then calculate the metric using all 3 channels
                         # combined
