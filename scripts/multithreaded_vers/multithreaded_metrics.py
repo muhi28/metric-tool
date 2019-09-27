@@ -35,6 +35,15 @@ def _clock():
     return cv.getTickCount() / cv.getTickFrequency()
 
 
+def __calc_ssim(img1, img2, _t):
+    pass
+
+
+def __calc_wpsnr(img1, img2, _t):
+    pass
+
+
+
 def __calc_ws_psnr(img1, img2, _t):
     """
         performs the weighted spherical psnr calculation
@@ -125,26 +134,6 @@ def __init_argparser():
     return vars(arg_parser.parse_args())
 
 
-def __check_video_resolutions(raw_cap, coded_cap):
-    """
-        check resolution of of video to compare
-
-    :param raw_cap: raw video capture
-    :param coded_cap: coded video capture
-    :return:
-             True -> same resolution
-             False -> resolution not the same
-    """
-
-    raw_width = int(raw_cap.get(CAP_PROP_FRAME_WIDTH))
-    raw_height = int(raw_cap.get(CAP_PROP_FRAME_HEIGHT))
-    coded_width = int(coded_cap.get(CAP_PROP_FRAME_WIDTH))
-    coded_height = int(coded_cap.get(CAP_PROP_FRAME_HEIGHT))
-
-    # at the same time we need to init the frame width and height four our common metrics
-    return (raw_width == coded_width) and (raw_height == coded_height)
-
-
 def __get_metric(selected_metric):
     """
         used to check which metric function to execute
@@ -153,7 +142,9 @@ def __get_metric(selected_metric):
     """
     switcher = {
         "PSNR": __calc_psnr,
-        "WS-PSNR": __calc_ws_psnr
+        "WS-PSNR": __calc_ws_psnr,
+        "SSIM": __calc_ssim,
+        "W-PSNR": __calc_wpsnr
     }
 
     # get the selected metric to calculate
@@ -162,56 +153,26 @@ def __get_metric(selected_metric):
     return m
 
 
-if __name__ == '__main__':
+def perform_processing(num_processes, raw_file_path, coded_file_paths, metric):
+    # define metric which would be calculated
+    _metric_func = __get_metric(_metricToCalculate)
 
-    if len(sys.argv) <= 1:
-        print("Update the values -> raw video file/image and coded video file / image")
-        exit(0)
-
-    # parse all arguments
-    _args = __init_argparser()
-
-    # extract parameters
-    _rawFilePath = _args["raw"]  # get raw file path
-    _codedFilesPath = _args["encoded"]  # get coded file path
-    _colorSpaceType = _args["colorspace"]  # get selected color space to calculate the metrics
-    _metricToCalculate = _args["metric"]  # get selected metric to calculate
-
-
-    # _cap_coded = cv.VideoCapture(_codedFilesPath[0])
-
-    # parse raw basename
-    _, _raw_file_basename = os.path.split(_rawFilePath)
-
-    # set number of processes
-    _num_processes = int(cv.getNumberOfCPUs()) * 2
+    # initialize time data
+    _latency = _StatValue()
+    _frame_interval = _StatValue()
+    _last_frame_time = _clock()
 
     # high performance object used to cache async tasks
     _task_buffer = deque()
 
-    print("Start calculation ....\n")
-
-    print("Settings:")
-    print("Number of processes    :  {0}".format(_num_processes))
-    print("Color Space -> {0}".format(_colorSpaceType))
-    print("Selected Metric -> {0}".format(_metricToCalculate))
-    print("Selected raw video file -> {0}".format(_raw_file_basename))
-
-    # define metric which would be calculated
-    _metric_func = __get_metric(_metricToCalculate)
-
-    # get start time
+    # start calculation timer
     start_time = time()
 
     # open a pool of processes used to calculate the selected metric
     with Pool(processes=_num_processes) as _pool:
 
-        _latency = _StatValue()
-        _frame_interval = _StatValue()
-        _last_frame_time = _clock()
-
         # perform calculation for each given encoded file
-        for encoded_file in _codedFilesPath:
+        for encoded_file in coded_file_paths:
 
             # init necessary stuff
 
@@ -219,7 +180,7 @@ if __name__ == '__main__':
             _avg_value = 0.0
 
             # set current raw video capture
-            _cap_raw = cv.VideoCapture(_rawFilePath)
+            _cap_raw = cv.VideoCapture(raw_file_path)
 
             # set current encoded video capture
             _cap_coded = cv.VideoCapture(encoded_file)
@@ -240,22 +201,30 @@ if __name__ == '__main__':
                     _latency.update(_clock() - frame_time)
 
                     # print current calculation
-                    # print("latency        :  %.1f ms" % (_latency.value * 1000))
-                    # print("frame interval :  %.1f ms" % (_frame_interval.value * 1000))
+                    print("Frame Interval :  %.1f ms" % (_frame_interval.value * 1000))
                     print("PSNR Value     :  %.3f [dB]" % value)
-                    print("Frame count    :  {0}\n".format(_frame_count))
+                    print("Frame Count    :  {0}\n".format(_frame_count))
 
                     # add current value to avg and increase frame count
                     _avg_value += value
                     _frame_count += 1
 
                 # if length of dequeue is smaller than number of available threads -> start generating new tasks
-                if len(_task_buffer) < _num_processes:
+                if len(_task_buffer) < num_processes:
                     # read frames
                     has_raw_frames, raw_frame = _cap_raw.read()
                     has_coded_frames, coded_frame = _cap_coded.read()
 
+                    # check if end of video is reached
                     if not has_raw_frames or not has_coded_frames:
+                        _task_buffer.clear()
+                        print("metric calculation finished....")
+                        break
+
+                    # check whether the raw and coded videos are of same shape
+                    # otherwise continue to next encoded file
+                    if raw_frame.shape != coded_frame.shape:
+                        print("video shape doesn't match...")
                         break
 
                     # update frame interval and latency
@@ -280,8 +249,45 @@ if __name__ == '__main__':
                     # append task to left side of queue
                     _task_buffer.appendleft(task)
 
+            # release current video capture
+            _cap_raw.release()
+            _cap_coded.release()
+
             print('calculation finished\n')
 
             # print duration of measuring and average metric value
             print("duration of measuring    : {0} ms".format((time() - start_time)))
-            print("average {0} value    :  {1}\n".format(_metricToCalculate, _avg_value / _frame_count))
+            print("average {0} value    :  {1}\n".format(metric, _avg_value / _frame_count))
+
+
+if __name__ == '__main__':
+
+    if len(sys.argv) <= 1:
+        print("Update the values -> raw video file/image and coded video file / image")
+        exit(0)
+
+    # parse all arguments
+    _args = __init_argparser()
+
+    # extract parameters
+    _rawFilePath = _args["raw"]  # get raw file path
+    _codedFilesPath = _args["encoded"]  # get coded file path
+    _colorSpaceType = _args["colorspace"]  # get selected color space to calculate the metrics
+    _metricToCalculate = _args["metric"]  # get selected metric to calculate
+
+    # parse raw basename
+    _, _raw_file_basename = os.path.split(_rawFilePath)
+
+    # set number of processes
+    _num_processes = int(cv.getNumberOfCPUs())
+
+    print("Start calculation ....\n")
+
+    print("Settings:")
+    print("Number of processes    :  {0}".format(_num_processes))
+    print("Color Space -> {0}".format(_colorSpaceType))
+    print("Selected Metric -> {0}".format(_metricToCalculate))
+    print("Selected raw video file -> {0}".format(_raw_file_basename))
+
+    # start the video processing part
+    perform_processing(_num_processes, _rawFilePath, _codedFilesPath, _metricToCalculate)
