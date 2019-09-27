@@ -7,10 +7,10 @@ from time import time
 import cv2 as cv
 import numpy as np
 
-from cv2 import CAP_PROP_FRAME_WIDTH, CAP_PROP_FRAME_HEIGHT, CAP_PROP_FPS, split
+from utils.parse_video_files import get_video_files
+from cv2 import split
 from multiprocessing.pool import Pool, ThreadPool
 from collections import deque
-from utils.utilities import separate_channels
 from math import log10, cos, pi, inf
 
 num_frames = 0
@@ -132,7 +132,7 @@ def __init_argparser():
 
     # add argument elements to argparse
     arg_parser.add_argument("-r", "--raw", required=True, help="original input video")
-    arg_parser.add_argument("-e", "--encoded", nargs="+", required=True, help="encoded input video")
+    arg_parser.add_argument("-e", "--encoded", required=True, help="encoded input videos")
     arg_parser.add_argument("-c", "--colorspace", required=True, help="color space in which to perform measurements")
     arg_parser.add_argument("-m", "--metric", required=True, help="metric to measure")
 
@@ -154,12 +154,12 @@ def __get_metric(selected_metric):
     }
 
     # get the selected metric to calculate
-    m = switcher.get(selected_metric, lambda: "PSNR")
+    m = switcher.get(selected_metric, __calc_psnr)
 
     return m
 
 
-def perform_processing(num_processes, raw_file_path, coded_file_paths, metric) -> None:
+def perform_processing(num_processes, raw_file_path, coded_files_path, metric) -> None:
     """
         perform the metric calculation
 
@@ -186,8 +186,10 @@ def perform_processing(num_processes, raw_file_path, coded_file_paths, metric) -
     # open a pool of processes used to calculate the selected metric
     with Pool(processes=_num_processes) as _pool:
 
+        encoded_files = get_video_files(coded_files_path)
+
         # perform calculation for each given encoded file
-        for encoded_file in coded_file_paths:
+        for encoded_file in encoded_files:
 
             # init necessary stuff
 
