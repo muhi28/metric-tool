@@ -265,7 +265,6 @@ def perform_processing(num_processes, raw_file_path, coded_files_path, metric) -
                     # check if end of video is reached
                     if not has_raw_frames or not has_coded_frames:
                         _task_buffer.clear()
-                        print("metric calculation finished....")
                         break
 
                     # check whether the raw and coded videos are of same shape
