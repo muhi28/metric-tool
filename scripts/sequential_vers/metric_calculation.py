@@ -3,7 +3,7 @@ import sys
 import os
 import time
 import matplotlib.pyplot as plt
-from scripts.metric_calculator import MetricCalculator
+from scripts.sequential_vers.metric_calculator import MetricCalculator
 from cv2 import VideoCapture, CAP_PROP_FRAME_WIDTH, CAP_PROP_FRAME_HEIGHT, CAP_PROP_FPS
 
 
