@@ -1,18 +1,14 @@
 import argparse
-import gc
 import os
 import sys
-from time import time
-
 import cv2 as cv
-import numpy as np
 
+from time import time
 from utils.parse_video_files import get_video_files
 from utils.common_metrics import calc_psnr, calc_ssim, calc_wpsnr, calc_ws_psnr
 from cv2 import split, CAP_PROP_FRAME_COUNT
-from multiprocessing.pool import Pool, ThreadPool
+from multiprocessing.pool import Pool
 from collections import deque
-from math import log10, cos, pi, inf
 
 # variables defining maximal pixel value and progressbar length
 MAX_PIXEL = 255
@@ -20,7 +16,12 @@ bar_len = 60
 
 
 def progress(count, total, status=''):
-
+    """
+        prints processing state to progressbar
+    :param count: number of frames
+    :param total: total number
+    :param status: progressbar label
+    """
     filled_len = int(round(bar_len * count / float(total)))
 
     percents = round(100.0 * count / float(total), 1)
@@ -123,24 +124,24 @@ def perform_processing(num_processes, raw_file_path, coded_files_path, metric) -
             _cap_coded = cv.VideoCapture(encoded_file)
 
             # get number of frames to process
-            num_frames = _cap_raw.get(cv.CAP_PROP_FRAME_COUNT)
+            num_frames = _cap_raw.get(CAP_PROP_FRAME_COUNT)
 
             # cut out the video name from the given video path
             _, _coded_file_basename = os.path.split(encoded_file)
-            print("Selected coded video file -> {0}\n".format(_coded_file_basename))
+            print(f"Selected coded video file -> {_coded_file_basename}\n")
 
             # start the calculation
             while True:
 
                 # process generated tasks
                 while len(_task_buffer) > 0 and _task_buffer[0].ready():
-                    # print_progress(_frame_count, num_frames)
+                    print_progress(_frame_count, num_frames)
 
                     # pop element from rightmost side
                     value = _task_buffer.pop().get()
 
                     # print current calculation
-                    print("PSNR Value     :  %.3f [dB]" % value)
+                    # print("PSNR Value     :  %.3f [dB]" % value)
 
                     # add current value to avg and increase frame count
                     _avg_value += value
@@ -172,7 +173,7 @@ def perform_processing(num_processes, raw_file_path, coded_files_path, metric) -
                         _yuv_coded = cv.cvtColor(coded_frame, cv.COLOR_BGR2YCrCb)
 
                         # check which metric is selected
-                        if metric in {"PSNR", "WS-PSNR"}:
+                        if metric in {"PSNR", "WS-PSNR", "SSIM"}:
                             task = _pool.apply_async(_metric_func, (split(_yuv_raw)[0], split(_yuv_coded)[0]))
                         else:
                             task = _pool.apply_async(_metric_func, (_yuv_raw, _yuv_coded))
@@ -192,8 +193,8 @@ def perform_processing(num_processes, raw_file_path, coded_files_path, metric) -
             print('calculation finished\n')
 
             # print duration of measuring and average metric value
-            print("duration of measuring    : {0} ms".format((time() - start_time)))
-            print("average {0} value    :  {1}\n".format(metric, _avg_value / _frame_count))
+            print(f"duration of measuring    : {time() - start_time} ms")
+            print(f"average {metric} value    :  {_avg_value / _frame_count}\n")
 
 
 if __name__ == '__main__':
@@ -215,15 +216,15 @@ if __name__ == '__main__':
     _, _raw_file_basename = os.path.split(_rawFilePath)
 
     # set number of processes
-    _num_processes = int(cv.getNumberOfCPUs() / 2)
+    _num_processes = int(cv.getNumberOfCPUs())
 
     print("Start calculation ....\n")
 
     print("Settings:")
-    print("Number of processes    :  {0}".format(_num_processes))
-    print("Color Space -> {0}".format(_colorSpaceType))
-    print("Selected Metric -> {0}".format(_metricToCalculate))
-    print("Selected raw video file -> {0}".format(_raw_file_basename))
+    print(f"Number of processes    :  {_num_processes}")
+    print(f"Color Space -> {_colorSpaceType}")
+    print(f"Selected Metric -> {_metricToCalculate}")
+    print(f"Selected raw video file -> {_raw_file_basename}")
 
     # start the video processing part
     perform_processing(_num_processes, _rawFilePath, _codedFilesPath, _metricToCalculate)

@@ -7,7 +7,7 @@ import numpy as np
 MAX_PIXEL = 255
 
 
-def calc_ssim(img1, img2, multi_channel):
+def calc_ssim(img1, img2, multi_channel=False):
     """
         calculates the structural similarity between two images
     :param multi_channel: checks if we are operating on more than one color channel
