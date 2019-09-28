@@ -2,7 +2,7 @@ from math import inf
 
 from utils.utilities import separate_channels
 from cv2 import waitKey, CAP_PROP_FRAME_WIDTH, CAP_PROP_FRAME_HEIGHT
-from utils.common_metrics import init_frame_data, calc_psnr, calc_ws_psnr, calc_ssim, calc_nrmse
+from utils.common_metrics import calc_psnr, calc_ws_psnr, calc_ssim, calc_nrmse
 
 
 class MetricCalculator:
@@ -14,12 +14,8 @@ class MetricCalculator:
         self.video_cap_raw = video_cap_raw
         self.video_cap_coded = video_cap_coded
         self.color_space_type = color_space_type
-        self.frame_width = int(video_cap_raw.get(CAP_PROP_FRAME_WIDTH))
-        self.frame_height = int(video_cap_raw.get(CAP_PROP_FRAME_HEIGHT))
         self.avgValue = 0
         self.num_frames = 1
-        self.MAX_PIXEL = 255
-        init_frame_data(self.frame_height, self.frame_width)
 
     def calc_selected_metric(self, selected_metric, img_tuples):
         """

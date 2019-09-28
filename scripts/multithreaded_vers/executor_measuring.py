@@ -10,6 +10,8 @@ import numpy as np
 from cv2 import CAP_PROP_FRAME_WIDTH, CAP_PROP_FRAME_HEIGHT, CAP_PROP_FPS, split
 from multiprocessing.pool import Pool
 from collections import deque
+
+from utils.common_metrics import calc_psnr, calc_ws_psnr
 from utils.utilities import separate_channels
 from math import log10, cos, pi, inf
 
@@ -34,77 +36,6 @@ class _StatValue:
 def _clock():
     return cv.getTickCount() / cv.getTickFrequency()
 
-
-def __calc_ws_psnr(img1, img2):
-    """
-        performs the weighted spherical psnr calculation
-    :param img1: original frame
-    :param img2: coded/reference/reconstructed frame
-    :param _t: frame time
-    :return: ws-psnr value
-    """
-    height, width = img1.shape[0], img1.shape[1]
-
-    _ref_vals = np.array(img1, dtype=np.float64)
-    _target_vals = np.array(img2, dtype=np.float64)
-
-    _sum_val = _w_sum = 0.0
-
-    _diff = _ref_vals - _target_vals
-    _diff = np.abs(_diff) ** 2
-    _diff = _diff.flatten('C')
-
-    _pixel_weights = [cos((j - (height / 2) + 0.5) * (pi / height))
-                      for j in range(height)]
-
-    counter = 0
-    weight_id = 0
-
-    for val in _diff:
-
-        _sum_val += val * _pixel_weights[weight_id]
-        _w_sum += _pixel_weights[weight_id]
-
-        if counter == width:
-            counter = 0
-            weight_id += 1
-
-        counter += 1
-
-    _sum_val = _sum_val / _w_sum
-
-    if _sum_val == 0:
-        _sum_val = 100
-    else:
-        _sum_val = 10 * log10((MAX_PIXEL * MAX_PIXEL) / _sum_val)
-
-    return _sum_val
-
-
-def __calc_psnr(img1, img2):
-    """
-        calculates the peak-signal-to noise ration between two images
-    :param img1: original image
-    :param img2: coded image
-    :param _t: frame time
-    :return: psnr value
-    """
-
-    dims = img1.shape
-
-    target_data = np.array(img2, dtype=np.float64)
-    ref_data = np.array(img1, dtype=np.float64)
-
-    diff = ref_data - target_data
-    diff = diff.flatten('C')
-
-    mse = np.sum(diff ** 2) / (dims[1] * dims[0])
-
-    # if black frames appear during the measurement (leading to mse=zero), return the maximum float value for them.
-    if mse == 0:
-        return inf
-
-    return 10 * log10((MAX_PIXEL ** 2) / mse)
 
 
 def __init_argparser():
@@ -152,8 +83,8 @@ def __get_metric(selected_metric):
     :return: function representing the selected metric
     """
     switcher = {
-        "PSNR": __calc_psnr,
-        "WS-PSNR": __calc_ws_psnr
+        "PSNR": calc_psnr,
+        "WS-PSNR": calc_ws_psnr
     }
 
     # get the selected metric to calculate
