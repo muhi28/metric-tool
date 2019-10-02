@@ -1,4 +1,5 @@
 import argparse
+import math
 import os
 import sys
 import cv2 as cv
@@ -13,22 +14,6 @@ from collections import deque
 # variables defining maximal pixel value and progressbar length
 MAX_PIXEL = 255
 bar_len = 60
-
-
-def progress(count, total, status=''):
-    """
-        prints processing state to progressbar
-    :param count: number of frames
-    :param total: total number
-    :param status: progressbar label
-    """
-    filled_len = int(round(bar_len * count / float(total)))
-
-    percents = round(100.0 * count / float(total), 1)
-    bar = '=' * filled_len + '-' * (bar_len - filled_len)
-
-    sys.stdout.write('[%s] %s%s ...%s\r' % (bar, percents, '%', status))
-    sys.stdout.flush()
 
 
 def __init_argparser():
@@ -130,6 +115,9 @@ def perform_processing(num_processes, raw_file_path, coded_files_path, metric) -
             _, _coded_file_basename = os.path.split(encoded_file)
             print(f"Selected coded video file -> {_coded_file_basename}\n")
 
+            # print progressbar to console -> 0.0%
+            print_progress(0, num_frames)
+
             # start the calculation
             while True:
 
@@ -139,6 +127,10 @@ def perform_processing(num_processes, raw_file_path, coded_files_path, metric) -
 
                     # pop element from rightmost side
                     value = _task_buffer.pop().get()
+
+                    # skip black frames return math.inf as metric value
+                    if value == math.inf:
+                        continue
 
                     # print current calculation
                     # print("PSNR Value     :  %.3f [dB]" % value)
@@ -192,9 +184,11 @@ def perform_processing(num_processes, raw_file_path, coded_files_path, metric) -
 
             print('calculation finished\n')
 
-            # print duration of measuring and average metric value
-            print(f"duration of measuring    : {time() - start_time} ms")
+            # print average metric value
             print(f"average {metric} value    :  {_avg_value / _frame_count}\n")
+
+        # show duration of processing
+        print(f"duration of measuring    : {time() - start_time} s")
 
 
 if __name__ == '__main__':
