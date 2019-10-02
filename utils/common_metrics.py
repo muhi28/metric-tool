@@ -1,21 +1,13 @@
 from math import log10, inf, cos, pi
+from cv2.cv2 import split
 import skimage.measure
 import numpy as np
 
-frame_width = 0
-frame_height = 0
+
 MAX_PIXEL = 255
 
 
-def init_frame_data(height, width):
-    global frame_width
-    global frame_height
-
-    frame_height = height
-    frame_width = width
-
-
-def calc_ssim(img1, img2, multi_channel):
+def calc_ssim(img1, img2, multi_channel=False):
     """
         calculates the structural similarity between two images
     :param multi_channel: checks if we are operating on more than one color channel
@@ -49,7 +41,7 @@ def calc_psnr(img1, img2):
     :return: psnr value
     """
 
-    (height, width, _) = img1.shape
+    height, width = img1.shape[0], img1.shape[1]
 
     target_data = np.array(img2, dtype=np.float64)
     ref_data = np.array(img1, dtype=np.float64)
@@ -66,18 +58,45 @@ def calc_psnr(img1, img2):
     return 10 * log10((MAX_PIXEL ** 2) / mse)
 
 
-def calc_nrmse(img1, img2, norm_type):
+def calc_wpsnr(img1, img2):
+    """
+        calculate weighted psnr value
+    :param img1: raw image
+    :param img2: coded image
+    :return: w-psnr value
+    """
+    val1_raw, val2_raw, val3_raw = split(img1)
+    val1_coded, val2_coded, val3_coded = split(img2)
+
+    y_psnr = calc_psnr(val1_raw, val1_coded)
+    u_psnr = calc_psnr(val2_raw, val2_coded)
+    v_psnr = calc_psnr(val3_raw, val3_coded)
+
+    return ((6 * y_psnr) + u_psnr + v_psnr) / 8.0
+
+
+def calc_nrmse(img1, img2, norm_type="min-max"):
     """
         calculate normalized root mean-squared error (NRMSE)
 
     :param img1: raw image
     :param img2: coded image
+    :param norm_type: selected normalization type
     :return: nrmse value
     """
     return skimage.measure.compare_nrmse(img1, img2, norm_type)
 
 
 def calc_ws_psnr(img1, img2):
+    """
+        calculate weighted spherical psnr
+    :param img1: raw image
+    :param img2: coded image
+    :return: ws-psnr value
+    """
+
+    frame_height, frame_width = img1.shape[0], img1.shape[1]
+
     _ref_vals = np.array(img1, dtype=np.float64)
     _target_vals = np.array(img2, dtype=np.float64)
 

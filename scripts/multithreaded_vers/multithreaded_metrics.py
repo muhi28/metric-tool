@@ -1,125 +1,19 @@
 import argparse
-import gc
+import math
 import os
 import sys
-from time import time
-
 import cv2 as cv
-import numpy as np
 
+from time import time
 from utils.parse_video_files import get_video_files
-from cv2 import split
-from multiprocessing.pool import Pool, ThreadPool
+from utils.common_metrics import calc_psnr, calc_ssim, calc_wpsnr, calc_ws_psnr
+from cv2 import split, CAP_PROP_FRAME_COUNT
+from multiprocessing.pool import Pool
 from collections import deque
-from math import log10, cos, pi, inf
 
-num_frames = 0
-avg_value = 0
+# variables defining maximal pixel value and progressbar length
 MAX_PIXEL = 255
-
-
-class _StatValue:
-    def __init__(self, smooth_coef=0.5):
-        self.value = None
-        self.smooth_coef = smooth_coef
-
-    def update(self, v):
-        if self.value is None:
-            self.value = v
-        else:
-            c = self.smooth_coef
-            self.value = c * self.value + (1.0 - c) * v
-
-
-def _clock():
-    return cv.getTickCount() / cv.getTickFrequency()
-
-
-def __calc_ssim(img1, img2, t):
-    pass
-
-
-def __calc_ws_psnr(img1, img2, t):
-    """
-        performs the weighted spherical psnr calculation
-    :param img1: original frame
-    :param img2: coded/reference/reconstructed frame
-    :param t: frame time
-    :return: ws-psnr value
-    """
-    height, width = img1.shape[0], img1.shape[1]
-
-    _ref_vals = np.array(img1, dtype=np.float64)
-    _target_vals = np.array(img2, dtype=np.float64)
-
-    _sum_val = _w_sum = 0.0
-
-    _diff = _ref_vals - _target_vals
-    _diff = np.abs(_diff) ** 2
-    _diff = _diff.flatten('C')
-
-    _pixel_weights = [cos((j - (height / 2) + 0.5) * (pi / height))
-                      for j in range(height)]
-
-    counter = 0
-    weight_id = 0
-
-    for val in _diff:
-
-        _sum_val += val * _pixel_weights[weight_id]
-        _w_sum += _pixel_weights[weight_id]
-
-        if counter == width:
-            counter = 0
-            weight_id += 1
-
-        counter += 1
-
-    _sum_val = _sum_val / _w_sum
-
-    if _sum_val == 0:
-        _sum_val = 100
-    else:
-        _sum_val = 10 * log10((MAX_PIXEL * MAX_PIXEL) / _sum_val)
-
-    return _sum_val, t
-
-
-def __calc_psnr(img1, img2, t):
-    """
-        calculates the peak-signal-to noise ration between two images
-    :param img1: original image
-    :param img2: coded image
-    :param t: frame time
-    :return: psnr value
-    """
-
-    dims = img1.shape
-
-    target_data = np.array(img2, dtype=np.float64)
-    ref_data = np.array(img1, dtype=np.float64)
-
-    diff = ref_data - target_data
-    diff = diff.flatten('C')
-
-    mse = np.sum(diff ** 2) / (dims[1] * dims[0])
-
-    # if black frames appear during the measurement (leading to mse=zero), return the maximum float value for them.
-    if mse == 0:
-        return inf
-
-    return 10 * log10((MAX_PIXEL ** 2) / mse), t
-
-
-def __calc_wpsnr(img1, img2, t):
-    y_raw, u_raw, v_raw = split(img1)
-    y_coded, u_coded, v_coded = split(img2)
-
-    y_psnr, _ = __calc_psnr(y_raw, y_coded, t)
-    u_psnr, _ = __calc_psnr(u_raw, u_coded, t)
-    v_psnr, _ = __calc_psnr(v_raw, v_coded, t)
-
-    return ((6 * y_psnr) + u_psnr + v_psnr) / 8.0, t
+bar_len = 60
 
 
 def __init_argparser():
@@ -147,16 +41,32 @@ def __get_metric(selected_metric):
     :return: function representing the selected metric
     """
     switcher = {
-        "PSNR": __calc_psnr,
-        "WS-PSNR": __calc_ws_psnr,
-        "SSIM": __calc_ssim,
-        "W-PSNR": __calc_wpsnr
+        "PSNR": calc_psnr,
+        "WS-PSNR": calc_ws_psnr,
+        "SSIM": calc_ssim,
+        "W-PSNR": calc_wpsnr
     }
 
     # get the selected metric to calculate
-    m = switcher.get(selected_metric, __calc_psnr)
+    m = switcher.get(selected_metric, calc_psnr)
 
     return m
+
+
+def print_progress(iteration, total):
+    """
+        shows a progress bar during video processing
+    :param iteration:
+    :param total:
+    :return:
+    """
+    filled_len = int(round(bar_len * iteration / float(total)))
+
+    percents = round(102.3 * iteration / float(total), 1)
+    bar = '=' * filled_len + '-' * (bar_len - filled_len)
+
+    sys.stdout.write('\r[%s] %s%s ...%s' % (bar, percents, '%', "Processing Progress"))
+    sys.stdout.flush()
 
 
 def perform_processing(num_processes, raw_file_path, coded_files_path, metric) -> None:
@@ -165,17 +75,12 @@ def perform_processing(num_processes, raw_file_path, coded_files_path, metric) -
 
     :param num_processes: number of available processes
     :param raw_file_path: raw video file path
-    :param coded_file_paths: coded video file path
+    :param coded_files_path: coded video file path
     :param metric: selected metric
 
     """
     # define metric which would be calculated
     _metric_func = __get_metric(_metricToCalculate)
-
-    # initialize time data
-    _latency = _StatValue()
-    _frame_interval = _StatValue()
-    _last_frame_time = _clock()
 
     # high performance object used to cache async tasks
     _task_buffer = deque()
@@ -186,6 +91,7 @@ def perform_processing(num_processes, raw_file_path, coded_files_path, metric) -
     # open a pool of processes used to calculate the selected metric
     with Pool(processes=_num_processes) as _pool:
 
+        # parse encoded video files from given directory
         encoded_files = get_video_files(coded_files_path)
 
         # perform calculation for each given encoded file
@@ -202,25 +108,32 @@ def perform_processing(num_processes, raw_file_path, coded_files_path, metric) -
             # set current encoded video capture
             _cap_coded = cv.VideoCapture(encoded_file)
 
+            # get number of frames to process
+            num_frames = _cap_raw.get(CAP_PROP_FRAME_COUNT)
+
             # cut out the video name from the given video path
             _, _coded_file_basename = os.path.split(encoded_file)
-            print("Selected coded video file -> {0}\n".format(_coded_file_basename))
+            print(f"Selected coded video file -> {_coded_file_basename}\n")
+
+            # print progressbar to console -> 0.0%
+            print_progress(0, num_frames)
 
             # start the calculation
             while True:
 
                 # process generated tasks
                 while len(_task_buffer) > 0 and _task_buffer[0].ready():
-                    # pop element from rightmost side
-                    value, frame_time = _task_buffer.pop().get()
+                    print_progress(_frame_count, num_frames)
 
-                    # update latency
-                    _latency.update(_clock() - frame_time)
+                    # pop element from rightmost side
+                    value = _task_buffer.pop().get()
+
+                    # skip black frames return math.inf as metric value
+                    if value == math.inf:
+                        continue
 
                     # print current calculation
-                    print("Frame Interval :  %.1f ms" % (_frame_interval.value * 1000))
-                    print("PSNR Value     :  %.3f [dB]" % value)
-                    print("Frame Count    :  {0}\n".format(_frame_count))
+                    # print("PSNR Value     :  %.3f [dB]" % value)
 
                     # add current value to avg and increase frame count
                     _avg_value += value
@@ -235,19 +148,13 @@ def perform_processing(num_processes, raw_file_path, coded_files_path, metric) -
                     # check if end of video is reached
                     if not has_raw_frames or not has_coded_frames:
                         _task_buffer.clear()
-                        print("metric calculation finished....")
                         break
 
                     # check whether the raw and coded videos are of same shape
                     # otherwise continue to next encoded file
-                    if raw_frame.shape != coded_frame.shape:
+                    elif raw_frame.shape != coded_frame.shape:
                         print("video shape doesn't match...")
                         break
-
-                    # update frame interval and latency
-                    t = _clock()
-                    _frame_interval.update(t - _last_frame_time)
-                    _last_frame_time = t
 
                     # check whether YUV or RGB, etc. color space is selected
                     if _colorSpaceType == "YUV":
@@ -258,15 +165,15 @@ def perform_processing(num_processes, raw_file_path, coded_files_path, metric) -
                         _yuv_coded = cv.cvtColor(coded_frame, cv.COLOR_BGR2YCrCb)
 
                         # check which metric is selected
-                        if metric in {"PSNR", "WS-PSNR"}:
-                            task = _pool.apply_async(_metric_func, (split(_yuv_raw)[0], split(_yuv_coded)[0], t))
+                        if metric in {"PSNR", "WS-PSNR", "SSIM"}:
+                            task = _pool.apply_async(_metric_func, (split(_yuv_raw)[0], split(_yuv_coded)[0]))
                         else:
-                            task = _pool.apply_async(_metric_func, (_yuv_raw, _yuv_coded, t))
+                            task = _pool.apply_async(_metric_func, (_yuv_raw, _yuv_coded))
 
                     else:
                         # if selected color space is RGB, etc. -> then calculate the metric using all 3 channels
                         # combined
-                        task = _pool.apply_async(_metric_func, (raw_frame, coded_frame, t))
+                        task = _pool.apply_async(_metric_func, (raw_frame, coded_frame))
 
                     # append task to left side of queue
                     _task_buffer.appendleft(task)
@@ -277,9 +184,11 @@ def perform_processing(num_processes, raw_file_path, coded_files_path, metric) -
 
             print('calculation finished\n')
 
-            # print duration of measuring and average metric value
-            print("duration of measuring    : {0} ms".format((time() - start_time)))
-            print("average {0} value    :  {1}\n".format(metric, _avg_value / _frame_count))
+            # print average metric value
+            print(f"average {metric} value    :  {_avg_value / _frame_count}\n")
+
+        # show duration of processing
+        print(f"duration of measuring    : {time() - start_time} s")
 
 
 if __name__ == '__main__':
@@ -306,10 +215,10 @@ if __name__ == '__main__':
     print("Start calculation ....\n")
 
     print("Settings:")
-    print("Number of processes    :  {0}".format(_num_processes))
-    print("Color Space -> {0}".format(_colorSpaceType))
-    print("Selected Metric -> {0}".format(_metricToCalculate))
-    print("Selected raw video file -> {0}".format(_raw_file_basename))
+    print(f"Number of processes    :  {_num_processes}")
+    print(f"Color Space -> {_colorSpaceType}")
+    print(f"Selected Metric -> {_metricToCalculate}")
+    print(f"Selected raw video file -> {_raw_file_basename}")
 
     # start the video processing part
     perform_processing(_num_processes, _rawFilePath, _codedFilesPath, _metricToCalculate)
