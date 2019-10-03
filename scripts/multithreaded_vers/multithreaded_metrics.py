@@ -27,6 +27,7 @@ def __init_argparser():
     # add argument elements to argparse
     arg_parser.add_argument("-r", "--raw", required=True, help="original input video")
     arg_parser.add_argument("-e", "--encoded", required=True, help="encoded input videos")
+    arg_parser.add_argument("-s", "--skip_frames", required=False, help="skip number of frames")
     arg_parser.add_argument("-c", "--colorspace", required=True, help="color space in which to perform measurements")
     arg_parser.add_argument("-m", "--metric", required=True, help="metric to measure")
 
@@ -69,7 +70,7 @@ def print_progress(iteration, total):
     sys.stdout.flush()
 
 
-def perform_processing(num_processes, raw_file_path, coded_files_path, metric) -> None:
+def perform_processing(num_processes, num_frames_skip, raw_file_path, coded_files_path, metric) -> None:
     """
         perform the metric calculation
 
@@ -108,6 +109,11 @@ def perform_processing(num_processes, raw_file_path, coded_files_path, metric) -
             # set current encoded video capture
             _cap_coded = cv.VideoCapture(encoded_file)
 
+            # set number of frames to skip
+            if num_frames_skip > 1:
+                _cap_raw.set(cv.CAP_PROP_POS_FRAMES, num_frames_skip)
+                _cap_coded.set(cv.CAP_PROP_POS_FRAMES, num_frames_skip)
+
             # get number of frames to process
             num_frames = _cap_raw.get(CAP_PROP_FRAME_COUNT)
 
@@ -128,9 +134,9 @@ def perform_processing(num_processes, raw_file_path, coded_files_path, metric) -
                     # pop element from rightmost side
                     value = _task_buffer.pop().get()
 
-                    # skip black frames return math.inf as metric value
-                    if value == math.inf:
-                        continue
+                    # skip black frames returning math.inf as metric value
+                    # if value == math.inf:
+                    #     continue
 
                     # print current calculation
                     # print("PSNR Value     :  %.3f [dB]" % value)
@@ -205,6 +211,7 @@ if __name__ == '__main__':
     _codedFilesPath = _args["encoded"]  # get coded file path
     _colorSpaceType = _args["colorspace"]  # get selected color space to calculate the metrics
     _metricToCalculate = _args["metric"]  # get selected metric to calculate
+    _num_frames_skip = int(_args["skip_frames"])  # get number of frames to skip
 
     # parse raw basename
     _, _raw_file_basename = os.path.split(_rawFilePath)
@@ -221,4 +228,4 @@ if __name__ == '__main__':
     print(f"Selected raw video file -> {_raw_file_basename}")
 
     # start the video processing part
-    perform_processing(_num_processes, _rawFilePath, _codedFilesPath, _metricToCalculate)
+    perform_processing(_num_processes, _num_frames_skip, _rawFilePath, _codedFilesPath, _metricToCalculate)
