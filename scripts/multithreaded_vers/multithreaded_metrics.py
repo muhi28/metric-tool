@@ -219,7 +219,6 @@ if __name__ == '__main__':
     # set number of processes
     _num_processes = int(cv.getNumberOfCPUs()) * 2
 
-
     print("Start calculation ....\n")
 
     print("Settings:")
