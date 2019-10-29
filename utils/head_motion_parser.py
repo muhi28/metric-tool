@@ -2,6 +2,8 @@ import argparse
 import csv
 import sys
 
+from utils.vector_util import Vector3
+
 
 class HeadMotionParser:
 
@@ -9,10 +11,27 @@ class HeadMotionParser:
         pass
 
     def read_framelog(self, log_path):
+
+        head_mvmts = []
+
         with open(log_path, "r") as log_file:
             lines = csv.reader(log_file, delimiter=",")
             for line in lines:
-                print(line)
+
+                if "VD-FRAME" in line[0] and ":" in line[0]:
+                    _, time_stamp, x_val = line[0].split(": ")
+                    line[0] = x_val
+                elif ":" in line[0]:
+                    continue
+
+                vect3 = Vector3()
+                vect3.x = float(line[0])
+                vect3.y = float(line[1])
+                vect3.z = float(line[2])
+
+                head_mvmts.append(vect3)
+
+        return head_mvmts
 
 
 if __name__ == '__main__':
@@ -32,4 +51,4 @@ if __name__ == '__main__':
 
     mvmt_file_path = _args["head_data"]
     parser = HeadMotionParser()
-    parser.read_framelog(mvmt_file_path)
+    mvmt_data = parser.read_framelog(mvmt_file_path)
