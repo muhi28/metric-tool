@@ -217,7 +217,8 @@ if __name__ == '__main__':
     _, _raw_file_basename = os.path.split(_rawFilePath)
 
     # set number of processes
-    _num_processes = int(cv.getNumberOfCPUs())
+    _num_processes = int(cv.getNumberOfCPUs()) * 2
+
 
     print("Start calculation ....\n")
 
