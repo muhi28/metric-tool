@@ -75,6 +75,12 @@ def calc_wpsnr(img1, img2):
     return ((6 * y_psnr) + u_psnr + v_psnr) / 8.0
 
 
+def calc_vpsnr(img1, img2, head_motions):
+    height, width = img1.shape[0], img1.shape[1]
+
+
+
+
 def calc_nrmse(img1, img2, norm_type="min-max"):
     """
         calculate normalized root mean-squared error (NRMSE)
