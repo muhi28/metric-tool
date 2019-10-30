@@ -5,8 +5,10 @@ import sys
 import cv2 as cv
 
 from time import time
+
+from utils.head_motion_parser import process_log
 from utils.parse_video_files import get_video_files
-from utils.common_metrics import calc_psnr, calc_ssim, calc_wpsnr, calc_ws_psnr
+from utils.common_metrics import calc_psnr, calc_ssim, calc_wpsnr, calc_ws_psnr, init_vpsnr_conf
 from cv2 import split, CAP_PROP_FRAME_COUNT
 from multiprocessing.pool import Pool
 from collections import deque
@@ -124,6 +126,14 @@ def perform_processing(num_processes, num_frames_skip, raw_file_path, coded_file
             # print progressbar to console -> 0.0%
             print_progress(0, num_frames)
 
+            # if current selected metric is v-psnr then we need to initialize some configurations
+            if metric == "VPSNR":
+                _mvmt_file_path = input("Enter log file path: ")
+                _fps = float(input("Enter fps: "))
+                _num_frames = int(input("Enter number of frames: "))
+
+                _mvmt_data = process_log(_mvmt_file_path, _fps, _num_frames)
+
             # start the calculation
             while True:
 
@@ -172,14 +182,23 @@ def perform_processing(num_processes, num_frames_skip, raw_file_path, coded_file
 
                         # check which metric is selected
                         if metric in {"PSNR", "WS-PSNR", "SSIM"}:
+
                             task = _pool.apply_async(_metric_func, (split(_yuv_raw)[0], split(_yuv_coded)[0]))
+
+                        elif metric == "V-PSNR":
+                            task = _pool.apply_async(_metric_func,
+                                                     (split(_yuv_raw)[0], split(_yuv_coded)[0], _mvmt_data))
                         else:
                             task = _pool.apply_async(_metric_func, (_yuv_raw, _yuv_coded))
 
                     else:
                         # if selected color space is RGB, etc. -> then calculate the metric using all 3 channels
                         # combined
-                        task = _pool.apply_async(_metric_func, (raw_frame, coded_frame))
+
+                        if metric == "SSIM":
+                            task = _pool.apply_async(_metric_func, (raw_frame, coded_frame, True))
+                        else:
+                            task = _pool.apply_async(_metric_func, (raw_frame, coded_frame))
 
                     # append task to left side of queue
                     _task_buffer.appendleft(task)

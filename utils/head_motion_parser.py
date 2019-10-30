@@ -5,50 +5,60 @@ import sys
 from utils.vector_util import Vector3
 
 
-class HeadMotionParser:
+def _parse_raw_lines(lines):
+    raw_lines = []
 
-    def __init__(self):
-        pass
+    # parse raw data lines
+    for hm in lines:
 
-    def read_framelog(self, log_path):
+        if "VD-FRAME" not in hm[0]:
+            continue
 
-        head_mvmts = []
+        # convert raw log to frame log
+        _, time_stamp, x_val = hm[0].split(": ")
 
-        with open(log_path, "r") as log_file:
-            lines = csv.reader(log_file, delimiter=",")
-            for line in lines:
+        vec3 = Vector3()
+        vec3.x = float(x_val)
+        vec3.y = float(hm[1])
+        vec3.z = float(hm[2])
 
-                if "VD-FRAME" in line[0] and ":" in line[0]:
-                    _, time_stamp, x_val = line[0].split(": ")
-                    line[0] = x_val
-                elif ":" in line[0]:
-                    continue
+        raw_lines.append((int(time_stamp), vec3))
 
-                vect3 = Vector3()
-                vect3.x = float(line[0])
-                vect3.y = float(line[1])
-                vect3.z = float(line[2])
-
-                head_mvmts.append(vect3)
-
-        return head_mvmts
+    print(f"raw count lines {len(raw_lines)}")
+    return raw_lines
 
 
-if __name__ == '__main__':
+def process_log(log_path, fps, num_frames):
+    """
+        Parse head movement data from log file
 
-    if len(sys.argv) <= 1:
-        print("Update the values -> --head_data = head movement file")
-        exit(0)
+    :param log_path: path to log file
+    :param fps: frames per second
+    :param num_frames: number of video frames
+    :return:
+    """
 
-    # parse all arguments
-    # create arg parser
-    arg_parser = argparse.ArgumentParser()
+    frame_duration = 1000.0 / fps
+    result = []
 
-    # add argument elements to argparse
-    arg_parser.add_argument("-hd", "--head_data", required=True, help="add txt/csv file containing head movements")
+    with open(log_path, "r") as log_file:
+        lines = csv.reader(log_file, delimiter=",")
 
-    _args = vars(arg_parser.parse_args())
+        head_mvmts = _parse_raw_lines(lines)
 
-    mvmt_file_path = _args["head_data"]
-    parser = HeadMotionParser()
-    mvmt_data = parser.read_framelog(mvmt_file_path)
+        # convert to frame log list
+        next_frame_time = 0
+        first_entry_time, _ = head_mvmts[0]
+
+        for entry_time, view_direction in head_mvmts:
+
+            offset = entry_time - first_entry_time
+
+            if offset >= next_frame_time:
+                result.append(view_direction)
+                next_frame_time += frame_duration
+
+            if len(result) >= num_frames:
+                break
+
+    return result
