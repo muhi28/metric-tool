@@ -1,10 +1,23 @@
+import math
 from math import log10, inf, cos, pi
 from cv2.cv2 import split
 import skimage.measure
 import numpy as np
 
+from utils.vector_util import Vector3, get_yaw, get_pitch
 
 MAX_PIXEL = 255
+
+
+# _viewport = Viewport()
+#
+#
+# def set_viewport_settings(vp_width, vp_height, vp_fov_x):
+#     global _viewport
+#
+#     _viewport.set_width(vp_width)
+#     _viewport.set_height(vp_height)
+#     _viewport.set_fov_x(vp_fov_x)
 
 
 def calc_ssim(img1, img2, multi_channel=False):
@@ -75,8 +88,48 @@ def calc_wpsnr(img1, img2):
     return ((6 * y_psnr) + u_psnr + v_psnr) / 8.0
 
 
-def calc_vpsnr(img1, img2, head_motions):
+def calc_vpsnr(img1, img2, viewing_direction, _viewport):
+
     height, width = img1.shape[0], img1.shape[1]
+
+    y_raw, y_coded = img1, img2
+
+    sum = 0.0
+
+    vp_neg, vp_pos = (-1 * int(_viewport.get_width() / 2)), int(_viewport.get_width() / 2)
+
+    print(f"viewport range: {vp_neg} to {vp_pos}")
+
+    for i in range(vp_neg, vp_pos):
+
+        for j in range(vp_neg, vp_pos):
+            res = _viewport.get_spherical_coords(Vector3(i, j, 0), viewing_direction)
+
+            yaw = get_yaw(res)
+            pitch = get_pitch(res)
+
+            x_factor = width / 360.0
+            y_factor = height / 180.0
+
+            x = int(round(yaw * x_factor) % int(width))
+            y = int(round((pitch + 90) * y_factor) % int(height))
+
+            pixel_raw = int(y_raw[x][y])
+            pixel_coded = int(y_coded[x][y])
+
+            y_channel = int(pixel_raw - pixel_coded)
+
+            sum += y_channel * y_channel
+
+    _vpsnr_mse = (sum / (width * height))
+
+    if _vpsnr_mse == 0:
+        return inf
+
+    return 10.0 * np.log10((MAX_PIXEL * MAX_PIXEL) / _vpsnr_mse)
+
+
+
 
 
 

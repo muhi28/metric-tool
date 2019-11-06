@@ -8,12 +8,14 @@ from time import time
 
 from utils.head_motion_parser import process_log
 from utils.parse_video_files import get_video_files
-from utils.common_metrics import calc_psnr, calc_ssim, calc_wpsnr, calc_ws_psnr, init_vpsnr_conf
+from utils.common_metrics import calc_psnr, calc_ssim, calc_wpsnr, calc_ws_psnr, calc_vpsnr
 from cv2 import split, CAP_PROP_FRAME_COUNT
 from multiprocessing.pool import Pool
 from collections import deque
 
 # variables defining maximal pixel value and progressbar length
+from utils.vector_util import Viewport
+
 MAX_PIXEL = 255
 bar_len = 60
 
@@ -47,7 +49,8 @@ def __get_metric(selected_metric):
         "PSNR": calc_psnr,
         "WS-PSNR": calc_ws_psnr,
         "SSIM": calc_ssim,
-        "W-PSNR": calc_wpsnr
+        "W-PSNR": calc_wpsnr,
+        "V-PSNR": calc_vpsnr
     }
 
     # get the selected metric to calculate
@@ -97,6 +100,20 @@ def perform_processing(num_processes, num_frames_skip, raw_file_path, coded_file
         # parse encoded video files from given directory
         encoded_files = get_video_files(coded_files_path)
 
+        # if current selected metric is v-psnr then we need to initialize some configurations
+        if metric == "V-PSNR":
+            _mvmt_file_path = input("Enter log file path: ")
+            _fps = float(input("Enter fps: "))
+            _num_frames = int(input("Enter number of frames: "))
+
+            _mvmt_data = process_log(_mvmt_file_path, _fps, _num_frames)
+
+            _width = int(input("Enter viewport width: "))
+            _height = int(input("Enter viewport height: "))
+            _fovx = float(input("Enter field of view (x-axis): "))
+            _vp = Viewport(_width, _height, _fovx)
+            print(_mvmt_data[0])
+
         # perform calculation for each given encoded file
         for encoded_file in encoded_files:
 
@@ -126,13 +143,7 @@ def perform_processing(num_processes, num_frames_skip, raw_file_path, coded_file
             # print progressbar to console -> 0.0%
             print_progress(0, num_frames)
 
-            # if current selected metric is v-psnr then we need to initialize some configurations
-            if metric == "VPSNR":
-                _mvmt_file_path = input("Enter log file path: ")
-                _fps = float(input("Enter fps: "))
-                _num_frames = int(input("Enter number of frames: "))
-
-                _mvmt_data = process_log(_mvmt_file_path, _fps, _num_frames)
+            _log_count = 0
 
             # start the calculation
             while True:
@@ -162,7 +173,7 @@ def perform_processing(num_processes, num_frames_skip, raw_file_path, coded_file
                     has_coded_frames, coded_frame = _cap_coded.read()
 
                     # check if end of video is reached
-                    if not has_raw_frames or not has_coded_frames:
+                    if not has_raw_frames or not has_coded_frames or _frame_count >= 10:
                         _task_buffer.clear()
                         break
 
@@ -186,8 +197,14 @@ def perform_processing(num_processes, num_frames_skip, raw_file_path, coded_file
                             task = _pool.apply_async(_metric_func, (split(_yuv_raw)[0], split(_yuv_coded)[0]))
 
                         elif metric == "V-PSNR":
+
+                            vd = _mvmt_data[_log_count]
+
+                            # print(f"x -> {vd.x} | y -> {vd.y} | z -> {vd.z}")
                             task = _pool.apply_async(_metric_func,
-                                                     (split(_yuv_raw)[0], split(_yuv_coded)[0], _mvmt_data))
+                                                     (split(_yuv_raw)[0], split(_yuv_coded)[0], vd, _vp))
+
+                            _log_count += 1
                         else:
                             task = _pool.apply_async(_metric_func, (_yuv_raw, _yuv_coded))
 
