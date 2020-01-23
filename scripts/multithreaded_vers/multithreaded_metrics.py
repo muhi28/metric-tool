@@ -80,6 +80,7 @@ def perform_processing(num_processes, num_frames_skip, raw_file_path, coded_file
         perform the metric calculation
 
     :param num_processes: number of available processes
+    :param num_frames_skip: number of frames to skip
     :param raw_file_path: raw video file path
     :param coded_files_path: coded video file path
     :param metric: selected metric
@@ -173,7 +174,7 @@ def perform_processing(num_processes, num_frames_skip, raw_file_path, coded_file
                     has_coded_frames, coded_frame = _cap_coded.read()
 
                     # check if end of video is reached
-                    if not has_raw_frames or not has_coded_frames or _frame_count >= 10:
+                    if not has_raw_frames or not has_coded_frames:
                         _task_buffer.clear()
                         break
 

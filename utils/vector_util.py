@@ -35,22 +35,37 @@ def _get_rotation_matrix(alpha, beta, gamma):
     g = math.radians(gamma)
 
     # perform rotations around x, y and z axis
-    rz = Matrix3(math.cos(a), -math.sin(a), 0,
-                 math.sin(a), math.cos(a), 0,
-                 0, 0, 1)
+    rz = np.array([[math.cos(a), -math.sin(a), 0],
+                   [math.sin(a), math.cos(a), 0],
+                   [0, 0, 1]])
 
-    ry = Matrix3(math.cos(b), 0, math.sin(b),
-                 0, 1, 0,
-                 -math.sin(b), 0, math.cos(b))
+    ry = np.array([[math.cos(b), 0, math.sin(b)],
+                   [0, 1, 0],
+                   [-math.sin(b), 0, math.cos(b)]])
 
-    rx = Matrix3(1, 0, 0,
-                 0, math.cos(g), -math.sin(g),
-                 0, math.sin(g), math.cos(g))
+    rx = np.array([[1, 0, 0],
+                   [0, math.cos(g), -math.sin(g)],
+                   [0, math.sin(g), math.cos(g)]])
 
-    rz.multiply(ry)
-    rz.multiply(rx)
+    rz = rz * ry
+    rz = rz * rx
 
     return rz
+
+
+def _transform_mat(tmp, source):
+    """
+        Get transformation matrix
+    :param tmp: source matrix
+    :param source: vector used for transformation task
+    :return: transformation vector
+    """
+    return Vector3(
+        tmp[0][0] * source.x + tmp[0][1] * source.y + source[0][2] * source.z,
+        tmp[1][0] * source.x + tmp[1][1] * source.y + source[1][2] * source.z,
+        tmp[2][0] * source.x + tmp[2][1] * source.y + source[2][2] * source.z
+
+    )
 
 
 class Viewport:
@@ -120,18 +135,32 @@ class Viewport:
         return result
 
     def _get_transform_3d_2_2d(self):
-        res = Matrix3(self.get_focal_len(), 0, 0,
-                      0, self.get_focal_len(), 0,
-                      0, 0, 0)
+        """
+           Transform from 3D to 2D space
+        :return: converted 2D matrix
+        """
+        res = np.array([[self.get_focal_len(), 0, 0],
+                        [0, self.get_focal_len(), 0],
+                        [0, 0, 0]])
 
         return res
 
     def get_transform_2d_2_3d(self):
+        """
+            Transform from 2D to 3D space
+        :return: converted 3D matrix
+        """
         mat3 = self._get_transform_3d_2_2d()
 
-        return mat3.inverse()
+        return np.linalg.inv(mat3)
 
     def get_spherical_coords(self, viewport_coords, viewing_direction):
+        """
+            Get spherical coordinates for current viewport
+        :param viewport_coords: coordinates for current viewport
+        :param viewing_direction: viewing direction of current view
+        :return: spherical coordinates for given viewport and coordinates
+        """
         yaw = get_yaw(viewing_direction)
         pitch = get_pitch(viewing_direction)
 
@@ -139,7 +168,9 @@ class Viewport:
 
         adapt = Vector3(viewport_coords.x, viewport_coords.y, 1)
 
-        tmp = self.get_transform_2d_2_3d().transform(adapt)
+        tmp = self.get_transform_2d_2_3d()
+
+        tmp = _transform_mat(tmp, adapt)
 
         res_vec = Vector3(tmp.z, tmp.x, tmp.y)
 
@@ -152,28 +183,28 @@ class Viewport:
 class Matrix3:
 
     def __init__(self, m00=0.0, m01=0.0, m02=0.0, m10=0.0, m11=0.0, m12=0.0, m20=0.0, m21=0.0, m22=0.0):
-        self.matrix = np.asmatrix(np.zeros((3, 3), np.float))
+        self.matrix = np.array(np.zeros((3, 3), np.float32))
 
-        self.matrix[0, 0] = m00
-        self.matrix[0, 1] = m01
-        self.matrix[0, 2] = m02
-        self.matrix[1, 0] = m10
-        self.matrix[1, 1] = m11
-        self.matrix[1, 2] = m12
-        self.matrix[2, 0] = m20
-        self.matrix[2, 1] = m21
-        self.matrix[2, 2] = m22
+        self.matrix[0][0] = m00
+        self.matrix[0][1] = m01
+        self.matrix[0][2] = m02
+        self.matrix[1][0] = m10
+        self.matrix[1][1] = m11
+        self.matrix[1][2] = m12
+        self.matrix[2][0] = m20
+        self.matrix[2][1] = m21
+        self.matrix[2][2] = m22
 
     def multiply(self, m):
-        self.matrix.dot(m)
+        self.matrix = np.multiply(self.matrix, m)
 
     def inverse(self):
-        return self.matrix.getI()
+        return np.linalg.pinv(self.matrix)
 
     def transform(self, vec3):
-        return Vector3(self.matrix[0, 0] * vec3.x + self.matrix[0, 1] * vec3.y + self.matrix[0, 2] * vec3.z,
-                       self.matrix[1, 0] * vec3.x + self.matrix[1, 1] * vec3.y + self.matrix[1, 2] * vec3.z,
-                       self.matrix[2, 0] * vec3.x + self.matrix[2, 1] * vec3.y + self.matrix[2, 2] * vec3.z)
+        return Vector3(self.matrix[0][0] * vec3.x + self.matrix[0][1] * vec3.y + self.matrix[0][2] * vec3.z,
+                       self.matrix[1][0] * vec3.x + self.matrix[1][1] * vec3.y + self.matrix[1][2] * vec3.z,
+                       self.matrix[2][0] * vec3.x + self.matrix[2][1] * vec3.y + self.matrix[2][2] * vec3.z)
 
 
 class Vector3:
@@ -187,9 +218,18 @@ class Vector3:
         self.z = z
 
     def get_x(self):
+        """
+            Get x position of vector
+        :return: x-position (vector)
+        """
         return self.x
 
     def set_x(self, x):
+        """
+            Set vector x position
+        :param x: position in x
+        :return: None
+        """
         self.x = x
 
     def get_y(self):
@@ -205,6 +245,11 @@ class Vector3:
         self.z = z
 
     def angle(self, vec):
+        """
+            Get angle between two vectors
+        :param vec: destination vector used for the calculation
+        :return: angle between source and destination vector
+        """
         _mag = self.x * self.x + self.y * self.y + self.z * self.z
         _vmag = vec.x * vec.x + vec.y * vec.y + vec.z * vec.z
 
@@ -212,6 +257,10 @@ class Vector3:
         return math.acos(_dot_val / math.sqrt(_mag * _vmag))
 
     def normalize(self):
+        """
+            Used to normalize the vector positions
+        :return: None
+        """
         np_arr = np.array([self.x, self.y, self.z])
 
         np_arr = (np_arr / np.linalg.norm(np_arr, ord=2, axis=1, keepdims=True))
