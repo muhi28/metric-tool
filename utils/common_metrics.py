@@ -1,7 +1,7 @@
 import math
 from math import log10, inf, cos, pi
 from cv2.cv2 import split
-import skimage.measure
+from skimage.metrics import normalized_root_mse, structural_similarity
 import numpy as np
 
 from utils.vector_util import Vector3, get_yaw, get_pitch
@@ -42,8 +42,8 @@ def calc_ssim(img1, img2, multi_channel=False):
        :DOI:`10.1109/TIP.2003.819861`
     """
 
-    return skimage.measure.compare_ssim(img1, img2, gaussian_weights=True,
-                                        sigma=1.5, use_sample_covariance=False, multichannel=multi_channel)
+    return structural_similarity(img1, img2, gaussian_weights=True,
+                                 sigma=1.5, use_sample_covariance=False, multichannel=multi_channel)
 
 
 def calc_psnr(img1, img2):
@@ -89,7 +89,6 @@ def calc_wpsnr(img1, img2):
 
 
 def calc_vpsnr(img1, img2, viewing_direction, _viewport):
-
     height, width = img1.shape[0], img1.shape[1]
 
     y_raw, y_coded = img1, img2
@@ -129,11 +128,6 @@ def calc_vpsnr(img1, img2, viewing_direction, _viewport):
     return 10.0 * np.log10((MAX_PIXEL * MAX_PIXEL) / _vpsnr_mse)
 
 
-
-
-
-
-
 def calc_nrmse(img1, img2, norm_type="min-max"):
     """
         calculate normalized root mean-squared error (NRMSE)
@@ -143,7 +137,7 @@ def calc_nrmse(img1, img2, norm_type="min-max"):
     :param norm_type: selected normalization type
     :return: nrmse value
     """
-    return skimage.measure.compare_nrmse(img1, img2, norm_type)
+    return normalized_root_mse(img1, img2)
 
 
 def calc_ws_psnr(img1, img2):
