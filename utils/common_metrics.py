@@ -1,5 +1,7 @@
 import math
 from math import log10, inf, cos, pi
+
+import cv2
 from cv2.cv2 import split
 from skimage.metrics import normalized_root_mse, structural_similarity
 import numpy as np
@@ -42,8 +44,40 @@ def calc_ssim(img1, img2, multi_channel=False):
        :DOI:`10.1109/TIP.2003.819861`
     """
 
-    return structural_similarity(img1, img2, gaussian_weights=True,
-                                 sigma=1.5, use_sample_covariance=False, multichannel=multi_channel)
+    # return structural_similarity(img1, img2, gaussian_weights=True,
+    #                             sigma=1.5, use_sample_covariance=False, multichannel=multi_channel)
+
+    img1 = np.asarray(img1)
+    img2 = np.asarray(img2)
+
+    img1 = img1.astype(np.float64)
+    img2 = img2.astype(np.float64)
+
+    c1 = (0.01 * MAX_PIXEL) ** 2
+    c2 = (0.03 * MAX_PIXEL) ** 2
+
+    gaussian_kernel = cv2.getGaussianKernel(11, 1.5)
+    window = np.outer(gaussian_kernel, gaussian_kernel.transpose())
+
+    mu1 = cv2.filter2D(img1, -1, window)[5:-5, 5:-5]
+    mu2 = cv2.filter2D(img2, -1, window)[5:-5, 5:-5]
+
+    mu1_square = mu1 ** 2
+    mu2_square = mu2 ** 2
+
+    # calculate the product of mu1 and mu2
+    mu12 = mu1 * mu2
+
+    # calculate sigma values
+    sig1_sqare = cv2.filter2D(img1 ** 2, -1, window)[5:-5, 5:-5] - mu1_square
+    sig2_square = cv2.filter2D(img2 ** 2, -1, window)[5:-5, 5:-5] - mu2_square
+
+    sig12 = cv2.filter2D(img1 * img2, -1, window)[5:-5, 5:-5] - mu12
+
+    ssim_val = ((2 * mu12 + c1) * (2 * sig12 + c2)) / \
+               ((mu1_square + mu2_square + c1) * (sig1_sqare + sig2_square + c2))
+
+    return ssim_val.mean()
 
 
 def calc_psnr(img1, img2):

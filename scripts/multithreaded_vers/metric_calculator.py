@@ -1,5 +1,7 @@
 import os
 import sys
+from concurrent.futures import thread
+
 import cv2 as cv
 
 from time import time
@@ -8,7 +10,7 @@ from utils.head_motion_parser import process_log
 from utils.parse_video_files import get_video_files
 from utils.common_metrics import calc_psnr, calc_ssim, calc_wpsnr, calc_ws_psnr, calc_vpsnr
 from cv2 import split, CAP_PROP_FRAME_COUNT
-from multiprocessing.pool import Pool
+from multiprocessing.pool import Pool, ThreadPool
 from collections import deque
 
 # variables defining maximal pixel value and progressbar length
@@ -103,7 +105,7 @@ class MetricCalculator:
                 print(f"Selected coded video file -> {_coded_file_basename}\n")
 
                 # print progressbar to console -> 0.0%
-                self.__print_progress(0, num_frames)
+                # self.__print_progress(0, num_frames)
 
                 _log_count = 0
 
@@ -112,7 +114,7 @@ class MetricCalculator:
 
                     # process generated tasks
                     while len(_task_buffer) > 0 and _task_buffer[0].ready():
-                        self.__print_progress(_frame_count, num_frames)
+                        #self.__print_progress(_frame_count, num_frames)
 
                         # pop element from rightmost side
 
@@ -123,7 +125,7 @@ class MetricCalculator:
                         #     continue
 
                         # print current calculation
-                        # print("PSNR Value     :  %.3f [dB]" % value)
+                        #print("PSNR Value     :  %.3f [dB]" % value)
 
                         # add current value to avg and increase frame count
                         _avg_value += value
@@ -169,7 +171,7 @@ class MetricCalculator:
 
                                 _log_count += 1
                             else:
-                                task = _pool.apply_async(_metric_func, (_yuv_raw, _yuv_coded))
+                                task = _pool.apply_async(_metric_func, (split(_yuv_raw)[0], split(_yuv_coded)[0]))
 
                         else:
                             # if selected color space is RGB, etc. -> then calculate the metric using all 3 channels
@@ -223,7 +225,7 @@ class MetricCalculator:
         """
         filled_len = int(round(self.bar_len * iteration / float(total)))
 
-        percents = round(102.3 * iteration / float(total), 1)
+        percents = round(100.0 * iteration / float(total), 1)
         bar = '=' * filled_len + '-' * (self.bar_len - filled_len)
 
         sys.stdout.write('\r[%s] %s%s ...%s' % (bar, percents, '%', "Processing Progress"))
