@@ -1,20 +1,37 @@
+import math
 import os
 import sys
-from concurrent.futures import thread
-
-import cv2 as cv
-
+from collections import deque
+from multiprocessing.pool import Pool
 from time import time
 
+import cv2 as cv
+from cv2 import split, CAP_PROP_FRAME_COUNT
+
+from utils.common_metrics import calc_psnr, calc_ssim, calc_wpsnr, calc_ws_psnr, calc_vpsnr
 from utils.head_motion_parser import process_log
 from utils.parse_video_files import get_video_files
-from utils.common_metrics import calc_psnr, calc_ssim, calc_wpsnr, calc_ws_psnr, calc_vpsnr
-from cv2 import split, CAP_PROP_FRAME_COUNT
-from multiprocessing.pool import Pool, ThreadPool
-from collections import deque
-
 # variables defining maximal pixel value and progressbar length
 from utils.vector_util import Viewport
+
+
+def get_metric(selected_metric):
+    """
+           used to check which metric function to execute
+       :param selected_metric: currently selected metric
+       :return: function representing the selected metric
+    """
+
+    switcher = {
+        "PSNR": calc_psnr,
+        "WS-PSNR": calc_ws_psnr,
+        "SSIM": calc_ssim,
+        "W-PSNR": calc_wpsnr
+        # "V-PSNR": calc_vpsnr
+    }
+    # get the selected metric to calculate
+    m = switcher.get(selected_metric, calc_psnr)
+    return m
 
 
 class MetricCalculator:
@@ -105,33 +122,30 @@ class MetricCalculator:
                 print(f"Selected coded video file -> {_coded_file_basename}\n")
 
                 # print progressbar to console -> 0.0%
-                # self.__print_progress(0, num_frames)
+                self.__print_progress(0, num_frames)
 
                 _log_count = 0
 
                 # start the calculation
                 while True:
-
                     # process generated tasks
                     while len(_task_buffer) > 0 and _task_buffer[0].ready():
-                        #self.__print_progress(_frame_count, num_frames)
+                        self.__print_progress(_frame_count, num_frames)
 
                         # pop element from rightmost side
-
                         value = _task_buffer.pop().get()
-
                         # skip black frames returning math.inf as metric value
-                        # if value == math.inf:
-                        #     continue
+                        if value == math.inf:
+                            continue
 
                         # print current calculation
-                        #print("PSNR Value     :  %.3f [dB]" % value)
+                        # print("PSNR Value     :  %.3f [dB]" % value)
 
                         # add current value to avg and increase frame count
                         _avg_value += value
                         _frame_count += 1
 
-                    # if length of dequeue is smaller than number of available threads -> start generating new tasks
+                    # if length of dequeue is smaller than number of available processes -> start generating new tasks
                     if len(_task_buffer) < self.num_processes:
                         # read frames
                         has_raw_frames, raw_frame = _cap_raw.read()
@@ -158,17 +172,13 @@ class MetricCalculator:
 
                             # check which metric is selected
                             if self.metric in {"PSNR", "WS-PSNR", "SSIM"}:
-
                                 task = _pool.apply_async(_metric_func, (split(_yuv_raw)[0], split(_yuv_coded)[0]))
 
                             elif self.metric == "V-PSNR":
-
                                 vd = _mvmt_data[_log_count]
-
                                 # print(f"x -> {vd.x} | y -> {vd.y} | z -> {vd.z}")
                                 task = _pool.apply_async(_metric_func,
                                                          (split(_yuv_raw)[0], split(_yuv_coded)[0], vd, _vp))
-
                                 _log_count += 1
                             else:
                                 task = _pool.apply_async(_metric_func, (split(_yuv_raw)[0], split(_yuv_coded)[0]))
@@ -176,7 +186,6 @@ class MetricCalculator:
                         else:
                             # if selected color space is RGB, etc. -> then calculate the metric using all 3 channels
                             # combined
-
                             if self.metric == "SSIM":
                                 task = _pool.apply_async(_metric_func, (raw_frame, coded_frame, True))
                             else:
@@ -190,14 +199,14 @@ class MetricCalculator:
                 _cap_coded.release()
 
                 print('calculation finished\n')
-
                 # print average metric value
                 print(f"average {self.metric} value    :  {_avg_value / _frame_count}\n")
 
             # show duration of processing
             print(f"duration of measuring    : {time() - start_time} s")
 
-    def __get_metric(self, selected_metric):
+    @staticmethod
+    def __get_metric(selected_metric):
         """
                used to check which metric function to execute
            :param selected_metric: currently selected metric
@@ -213,7 +222,6 @@ class MetricCalculator:
         }
         # get the selected metric to calculate
         m = switcher.get(selected_metric, calc_psnr)
-
         return m
 
     def __print_progress(self, iteration, total):

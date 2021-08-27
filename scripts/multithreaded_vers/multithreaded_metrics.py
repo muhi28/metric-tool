@@ -1,10 +1,11 @@
 import os
-import cv2 as cv
-
-from scripts.multithreaded_vers.metric_calculator import MetricCalculator
 from tkinter import Tk  # from tkinter import Tk for Python 3.x
 from tkinter.filedialog import askopenfilename, askdirectory
 from tkinter.simpledialog import askstring, askinteger
+
+import cv2 as cv
+
+from scripts.multithreaded_vers.metric_calculator import MetricCalculator
 
 if __name__ == '__main__':
     # select the original image
@@ -33,7 +34,7 @@ if __name__ == '__main__':
 
     # start the video processing part
     # perform_processing(_num_processes, _num_frames_skip, _rawFilePath, _codedFilesPath, _metricToCalculate)
-    metric_proc = MetricCalculator(_num_processes, _num_frames_skip,
+    metric_proc = MetricCalculator((_num_processes + 2), _num_frames_skip,
                                    _rawFilePath, _codedFilesPath,
                                    _colorSpaceType, _metricToCalculate)
 
