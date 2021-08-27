@@ -1,2 +1,4 @@
 # Project exclude paths
 /venv/
+/metric_measurements/
+.idea
