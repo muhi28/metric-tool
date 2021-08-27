@@ -8,11 +8,11 @@ from time import time
 import cv2 as cv
 from cv2 import split, CAP_PROP_FRAME_COUNT
 
-from utils.common_metrics import calc_psnr, calc_ssim, calc_wpsnr, calc_ws_psnr, calc_vpsnr
-from utils.head_motion_parser import process_log
+from utils.common_metrics import calc_psnr, calc_ssim, calc_wpsnr, calc_ws_psnr
 from utils.parse_video_files import get_video_files
+
+
 # variables defining maximal pixel value and progressbar length
-from utils.vector_util import Viewport
 
 
 def get_metric(selected_metric):
@@ -27,7 +27,6 @@ def get_metric(selected_metric):
         "WS-PSNR": calc_ws_psnr,
         "SSIM": calc_ssim,
         "W-PSNR": calc_wpsnr
-        # "V-PSNR": calc_vpsnr
     }
     # get the selected metric to calculate
     m = switcher.get(selected_metric, calc_psnr)
@@ -79,20 +78,6 @@ class MetricCalculator:
 
             # parse encoded video files from given directory
             encoded_files = get_video_files(self.coded_file_path)
-
-            # if current selected metric is v-psnr then we need to initialize some configurations
-            if self.metric == "V-PSNR":
-                _mvmt_file_path = input("Enter log file path: ")
-                _fps = float(input("Enter fps: "))
-                _num_frames = int(input("Enter number of frames: "))
-
-                _mvmt_data = process_log(_mvmt_file_path, _fps, _num_frames)
-
-                _width = int(input("Enter viewport width: "))
-                _height = int(input("Enter viewport height: "))
-                _fovx = float(input("Enter field of view (x-axis): "))
-                _vp = Viewport(_width, _height, _fovx)
-                print(_mvmt_data[0])
 
             # perform calculation for each given encoded file
             for encoded_file in encoded_files:
@@ -173,13 +158,6 @@ class MetricCalculator:
                             # check which metric is selected
                             if self.metric in {"PSNR", "WS-PSNR", "SSIM"}:
                                 task = _pool.apply_async(_metric_func, (split(_yuv_raw)[0], split(_yuv_coded)[0]))
-
-                            elif self.metric == "V-PSNR":
-                                vd = _mvmt_data[_log_count]
-                                # print(f"x -> {vd.x} | y -> {vd.y} | z -> {vd.z}")
-                                task = _pool.apply_async(_metric_func,
-                                                         (split(_yuv_raw)[0], split(_yuv_coded)[0], vd, _vp))
-                                _log_count += 1
                             else:
                                 task = _pool.apply_async(_metric_func, (split(_yuv_raw)[0], split(_yuv_coded)[0]))
 
@@ -217,8 +195,7 @@ class MetricCalculator:
             "PSNR": calc_psnr,
             "WS-PSNR": calc_ws_psnr,
             "SSIM": calc_ssim,
-            "W-PSNR": calc_wpsnr,
-            "V-PSNR": calc_vpsnr
+            "W-PSNR": calc_wpsnr
         }
         # get the selected metric to calculate
         m = switcher.get(selected_metric, calc_psnr)
